@@ -85,7 +85,9 @@ async function openComposer(extension: ExtensionHarness) {
   const page = await extension.openGmgnTokenSurface(metadataFixture("trenches", {
     sourceAddress: TOKEN, translatedName: "Vamp", translatedSymbol: "VAMP", imageUrl: "https://gmgn.ai/__fixtures/vamp.png",
   }), "https://gmgn.ai/?chain=bsc&tab=trenches");
-  await page.context().route("https://funcs.flap.sh/api/upload", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { create: "bafy-erc20-browser" } }) }));
+  // This deterministic fixture reaches the required 7777 CREATE2 suffix in
+  // 76 iterations, keeping MV3 error-path assertions independent of CPU speed.
+  await page.context().route("https://funcs.flap.sh/api/upload", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { create: "test-315" } }) }));
   await page.getByRole("button", { name: "Vamp this token" }).click();
   const composer = page.locator("[data-vamp-launch-composer]");
   await composer.getByLabel("Name").fill("Vamp");
@@ -165,7 +167,7 @@ function baseRpcResult(method: string, params: unknown[] = []): unknown {
 
 function receipt(hash: string, status: "success" | "reverted", launch: boolean) {
   const topics = launch ? encodeEventTopics({ abi: FLAP_PORTAL_ABI, eventName: "TokenCreated" }) : [];
-  const data = launch ? encodeAbiParameters(parseAbiParameters("uint256,address,uint256,address,string,string,string"), [1n, OWNER, 1n, CREATED, "Vamp", "VAMP", "bafy-erc20-browser"]) : "0x";
+  const data = launch ? encodeAbiParameters(parseAbiParameters("uint256,address,uint256,address,string,string,string"), [1n, OWNER, 1n, CREATED, "Vamp", "VAMP", "test-315"]) : "0x";
   return {
     transactionHash: hash, transactionIndex: "0x0", blockHash: BLOCK_HASH, blockNumber: "0x100", from: OWNER,
     to: FLAP_PORTAL_ADDRESS, cumulativeGasUsed: "0x7a120", gasUsed: "0x7a120", contractAddress: null,

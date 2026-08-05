@@ -67,6 +67,10 @@ test("live chart relations anchor Vamp below token favorite and capture header m
 
   await page.evaluate(() => history.pushState({}, "", "/sol/token/0x1111111111111111111111111111111111111111"));
   await expect(page.getByRole("button", { name: "Vamp this token" })).toHaveCount(0);
+  await expect(header.locator("[data-vamp-chart-stack]")).toHaveCount(0);
+  expect(await watch.evaluate((node) => node.nextElementSibling?.getAttribute("data-sentry-component"))).toBe("BaseProgress");
+  await watch.locator(".cursor-pointer").click();
+  expect(await page.evaluate(() => Reflect.get(window, "watchInvocations"))).toBe(2);
   await page.evaluate(() => history.replaceState({}, "", "/bsc/token/0x1111111111111111111111111111111111111111"));
   await expect(stack.getByRole("button", { name: "Vamp this token" })).toHaveCount(1);
   await expect(header.locator("[data-vamp-chart-stack]")).toHaveCount(1);

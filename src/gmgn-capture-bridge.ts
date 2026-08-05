@@ -168,6 +168,11 @@ export function installGmgnCaptureBridge(
       actionCleanup.get(button)?.();
       button.remove();
     });
+    document.querySelectorAll<HTMLElement>("[data-vamp-chart-stack]").forEach((stack) => {
+      const watch = stack.querySelector<HTMLElement>(LIVE_CHART_WATCH_SELECTOR);
+      if (watch && stack.parentElement) stack.parentElement.insertBefore(watch, stack);
+      stack.remove();
+    });
     hideTooltip();
     launchComposer.dismiss();
   }
