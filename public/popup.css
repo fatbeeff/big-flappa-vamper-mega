@@ -34,6 +34,14 @@ input, select { min-width: 0; border: 1px solid #3a3d43; border-radius: 6px; bac
 .import-button input { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); }
 .status { min-height: 18px; }
 .status.error { color: #ff858b; }
+.asset-groups { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.asset-group { border: 1px solid #2c2f34; border-radius: 8px; padding: 9px; }
+.asset-group h3 { text-transform: uppercase; letter-spacing: .06em; }
+.asset-group ul { display: grid; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.asset-row { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; }
+.asset-state { color: #65d7ac; }
+.asset-state.unavailable { color: #a3a6ad; }
+button:disabled { cursor: wait; opacity: .65; }
 dl { margin: 0; display: grid; gap: 8px; }
 dl div { display: flex; justify-content: space-between; gap: 16px; font-size: 12px; }
 dt { color: #9da1aa; }
