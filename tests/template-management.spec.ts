@@ -18,7 +18,7 @@ test.describe("Launch Template configuration", () => {
     await popup.getByRole("button", { name: "Create template" }).click();
     await popup.getByLabel("Template name").fill("Fast launch");
     await expect(popup.getByLabel("Payment asset")).toHaveRole("combobox");
-    await expect(popup.getByLabel("Payment asset").getByRole("option")).toHaveCount(1);
+    await expect(popup.getByLabel("Payment asset").getByRole("option")).toHaveCount(8);
     await popup.getByLabel("Payment asset").selectOption({ label: "BNB" });
     await popup.getByLabel("Buy tax percentage").fill("3");
     await popup.getByLabel("Sell tax percentage").fill("4");

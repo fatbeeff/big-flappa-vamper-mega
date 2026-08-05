@@ -1,4 +1,7 @@
 import { resolveErc20Identity } from "./bsc-rpc";
+import { refreshPaymentAssetsIfStale } from "./payment-assets";
+
+const ALARM_NAME = "refresh-payment-assets";
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
   if (!isIdentityRequest(message)) return false;
@@ -16,3 +19,12 @@ function isIdentityRequest(message: unknown): message is { type: "vamp:resolve-s
     && Reflect.get(message, "type") === "vamp:resolve-source-token"
     && typeof Reflect.get(message, "address") === "string";
 }
+
+chrome.runtime.onInstalled.addListener(() => {
+  void chrome.alarms.create(ALARM_NAME, { periodInMinutes: 300 });
+  void refreshPaymentAssetsIfStale();
+});
+chrome.runtime.onStartup.addListener(() => { void refreshPaymentAssetsIfStale(); });
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === ALARM_NAME) void refreshPaymentAssetsIfStale();
+});

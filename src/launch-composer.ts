@@ -1,5 +1,5 @@
 import { getActiveTemplate } from "./launch-templates";
-import { paymentAssetLabel } from "./payment-assets";
+import { getComposerPaymentAssets, paymentAssetLabel } from "./payment-assets";
 import type {
   LaunchImageSource,
   LaunchMetadataValues,
@@ -303,13 +303,14 @@ export function createLaunchComposer(): LaunchComposer {
   }
 
   async function renderActiveTemplate(sequence: number): Promise<void> {
-    const template = await getActiveTemplate();
+    // Both reads are extension-local. Opening never waits for the registry.
+    const [template, assets] = await Promise.all([getActiveTemplate(), getComposerPaymentAssets()]);
     if (sequence !== openSequence || host.hidden) return;
     const summary = shadow.querySelector<HTMLElement>("[data-active-template]")!;
     summary.replaceChildren();
     const label = document.createElement("p"); label.textContent = "Active Template";
     const name = document.createElement("strong"); name.textContent = template.name;
-    const mechanics = document.createElement("p"); mechanics.textContent = `${paymentAssetLabel(template.mechanics.paymentAssetId)} · Buy tax ${template.mechanics.buyTaxPercent}% · Sell tax ${template.mechanics.sellTaxPercent}%`;
+    const mechanics = document.createElement("p"); mechanics.textContent = `${paymentAssetLabel(template.mechanics.paymentAssetId, assets)} · Buy tax ${template.mechanics.buyTaxPercent}% · Sell tax ${template.mechanics.sellTaxPercent}%`;
     summary.append(label, name, mechanics);
   }
 }

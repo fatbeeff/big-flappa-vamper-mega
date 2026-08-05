@@ -8,5 +8,5 @@
     "noEmit": true,
     "types": ["chrome", "node"]
   },
-  "include": ["src", "scripts", "tests", "playwright.config.ts"]
+  "include": ["src", "registry", "scripts", "tests", "playwright.config.ts"]
 }

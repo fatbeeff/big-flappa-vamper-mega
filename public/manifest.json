@@ -3,7 +3,7 @@
   "name": "GMGN Vamp",
   "description": "Begin a Flap launch from supported GMGN BSC token surfaces.",
   "version": "0.1.0",
-  "permissions": ["storage"],
+  "permissions": ["storage", "alarms"],
   "icons": {
     "16": "assets/vamp-16.png",
     "32": "assets/vamp-32.png",

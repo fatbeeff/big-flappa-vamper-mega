@@ -19,6 +19,15 @@
         <h2 id="setup-heading">Extension ready</h2>
         <p>Open a supported GMGN BSC token surface to begin a launch.</p>
       </section>
+      <section aria-labelledby="payment-assets-heading">
+        <div class="section-heading">
+          <div><h2 id="payment-assets-heading">Asset Registry</h2><p>Cached Crypto and RWA choices used by the Launch Composer.</p></div>
+          <button id="refresh-payment-assets" type="button">Force Refresh</button>
+        </div>
+        <p id="payment-assets-cache-state" aria-live="polite">Loading cached assets…</p>
+        <div id="payment-assets-list" class="asset-groups"></div>
+        <p id="payment-assets-status" class="status" aria-live="polite"></p>
+      </section>
       <section aria-labelledby="templates-heading" class="templates">
         <div class="section-heading">
           <div><h2 id="templates-heading">Launch Templates</h2><p>Reusable Launch Mechanics for new launches.</p></div>

@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-08-05T00:00:00.000Z",
+  "assets": [
+    { "id": "native-bnb", "symbol": "BNB", "label": "BNB", "category": "crypto", "enabled": true },
+    { "id": "usdt", "symbol": "USDT", "label": "USDT", "category": "crypto", "enabled": true },
+    { "id": "usd1", "symbol": "USD1", "label": "USD1", "category": "crypto", "enabled": true },
+    { "id": "eth", "symbol": "ETH", "label": "Ethereum", "category": "crypto", "enabled": false, "unavailableReason": "Not currently available for BSC tax-token launches" },
+    { "id": "spcxb", "symbol": "SPCXB", "label": "SpaceX", "category": "rwa", "enabled": true },
+    { "id": "nvdab", "symbol": "NVDAB", "label": "NVIDIA", "category": "rwa", "enabled": true },
+    { "id": "tslab", "symbol": "TSLAB", "label": "Tesla", "category": "rwa", "enabled": true },
+    { "id": "aaplb", "symbol": "AAPLB", "label": "Apple", "category": "rwa", "enabled": false, "unavailableReason": "Not currently available for selection" }
+  ]
+}
