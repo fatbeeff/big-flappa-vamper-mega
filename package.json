@@ -7,7 +7,7 @@
     "build": "node scripts/build.mjs",
     "typecheck": "tsc --noEmit",
     "test": "playwright test",
-    "test:focused": "playwright test tests/extension-shell.spec.ts",
+    "test:focused": "playwright test tests/extension-shell.spec.ts tests/gmgn-production-adapter.spec.ts",
     "test:metadata": "playwright test tests/launch-metadata.spec.ts",
     "test:templates": "playwright test tests/template-management.spec.ts",
     "test:payment-assets": "playwright test tests/payment-assets.spec.ts tests/payment-asset-registry.contract.spec.ts tests/payment-asset-build.contract.spec.ts tests/registry-service.contract.spec.ts",
