@@ -17,6 +17,7 @@ test("applies the Active Template and exposes only the supported tax-token mecha
   await expect(mechanics.getByText("Active Template", { exact: true })).toBeVisible();
   await expect(mechanics.getByText("RWA sprint", { exact: true })).toBeVisible();
   await expect(mechanics).toContainText(/SpaceX.*Buy tax 3%.*Sell tax 7%.*6000\/1000\/1000\/2000 bps.*Creator purchase 0/);
+  await expect(mechanics).toContainText("Dividend SpaceX · 10,000-token holder minimum");
 
   await mechanics.getByText("Edit Launch Mechanics").click();
   await expect(mechanics.getByLabel("Payment quote asset")).toHaveValue("spcxb");

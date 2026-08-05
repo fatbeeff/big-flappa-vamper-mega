@@ -1,10 +1,13 @@
-import { getActiveTemplate, saveOperatorTemplate, type LaunchMechanics } from "./launch-templates";
+import { getActiveTemplate, saveOperatorTemplate } from "./launch-templates";
 import {
+  FLAP_MINIMUM_DIVIDEND_BALANCE_TOKENS,
+  launchMechanicsFromResolved,
   mechanicsFormValues,
   validateLaunchMechanics,
   type LaunchMechanicsField,
   type LaunchMechanicsFormValues,
   type LaunchMechanicsValidation,
+  type ResolvedLaunchMechanics,
 } from "./launch-mechanics";
 import { getComposerPaymentAssets, paymentAssetLabel } from "./payment-assets";
 import type { PaymentAsset } from "./payment-assets";
@@ -26,7 +29,7 @@ export type LaunchDraftSnapshot = {
   sourceAddress: string;
   metadata: LaunchMetadataValues;
   imageSource: LaunchImageSource;
-  mechanics: LaunchMechanics | null;
+  mechanics: ResolvedLaunchMechanics | null;
   mechanicsValidation: LaunchMechanicsValidation;
 };
 
@@ -442,7 +445,7 @@ export function createLaunchComposer(): LaunchComposer {
         await saveOperatorTemplate({
           id: crypto.randomUUID(),
           name: templateName.value.trim(),
-          mechanics: structuredClone(validation.mechanics),
+          mechanics: launchMechanicsFromResolved(validation.mechanics),
         });
         saveForm.hidden = true;
         templateName.value = "";
@@ -461,7 +464,11 @@ export function createLaunchComposer(): LaunchComposer {
 
 function mechanicsSummary(values: LaunchMechanicsFormValues, assets: readonly PaymentAsset[]): string {
   const allocation = `${values.creatorFundsBps}/${values.burnBps}/${values.dividendBps}/${values.liquidityBps} bps`;
-  return `${paymentAssetLabel(values.paymentAssetId, assets)} · Buy tax ${values.buyTaxPercent}% · Sell tax ${values.sellTaxPercent}% · Allocation ${allocation} · Creator purchase ${values.creatorPurchaseAmount}`;
+  const paymentAsset = paymentAssetLabel(values.paymentAssetId, assets);
+  const dividendPolicy = Number(values.dividendBps) > 0
+    ? ` · Dividend ${paymentAsset} · ${Number(FLAP_MINIMUM_DIVIDEND_BALANCE_TOKENS).toLocaleString("en-US")}-token holder minimum`
+    : "";
+  return `${paymentAsset} · Buy tax ${values.buyTaxPercent}% · Sell tax ${values.sellTaxPercent}% · Allocation ${allocation}${dividendPolicy} · Creator purchase ${values.creatorPurchaseAmount}`;
 }
 
 function renderMechanicsValidation(container: HTMLElement, validation: LaunchMechanicsValidation): void {

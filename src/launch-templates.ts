@@ -33,7 +33,7 @@ const DEFAULT_ACTIVE_ID = "team-balanced-bnb";
 
 export const BUNDLED_TEMPLATES: readonly LaunchTemplate[] = [
   bundledTemplate("team-balanced-bnb", "Balanced BNB", 2, 2),
-  bundledTemplate("team-zero-tax-bnb", "Zero-tax BNB", 0, 0),
+  bundledTemplate("team-growth-bnb", "Growth BNB", 1, 5),
 ];
 
 export async function loadTemplateState(): Promise<TemplateState> {
@@ -43,7 +43,8 @@ export async function loadTemplateState(): Promise<TemplateState> {
     const document = validateTransferDocument(stored);
     return mergeWithBundled(document);
   } catch {
-    return { activeTemplateId: DEFAULT_ACTIVE_ID, templates: cloneBundled() };
+    const repaired = repairStoredDocument(stored);
+    return repaired ? mergeWithBundled(repaired) : { activeTemplateId: DEFAULT_ACTIVE_ID, templates: cloneBundled() };
   }
 }
 
@@ -128,9 +129,11 @@ function validateTemplate(input: unknown, path: string): Omit<LaunchTemplate, "s
     dividend: basisPoints(mechanics.allocationBps.dividend, `${path}.mechanics.allocationBps.dividend`),
     liquidity: basisPoints(mechanics.allocationBps.liquidity, `${path}.mechanics.allocationBps.liquidity`),
   };
-  if (Object.values(allocationBps).reduce((sum, value) => sum + value, 0) !== 10_000) throw new Error(`${path}.mechanics.allocationBps must total 10000.`);
-  if (typeof mechanics.creatorPurchaseAmount !== "string" || !/^\d+(\.\d+)?$/.test(mechanics.creatorPurchaseAmount)) throw new Error(`${path}.mechanics.creatorPurchaseAmount must be a non-negative decimal string.`);
-  return { id: input.id, name: input.name, mechanics: { paymentAssetId: mechanics.paymentAssetId, buyTaxPercent, sellTaxPercent, allocationBps, creatorPurchaseAmount: mechanics.creatorPurchaseAmount } };
+  if (typeof mechanics.creatorPurchaseAmount !== "string") throw new Error(`${path}.mechanics.creatorPurchaseAmount must be a string.`);
+  const validated = { paymentAssetId: mechanics.paymentAssetId, buyTaxPercent, sellTaxPercent, allocationBps, creatorPurchaseAmount: mechanics.creatorPurchaseAmount };
+  try { assertLaunchMechanicsInvariants(validated); }
+  catch (error) { throw new Error(`${path}.mechanics: ${error instanceof Error ? error.message : "invalid Launch Mechanics."}`); }
+  return { id: input.id, name: input.name, mechanics: validated };
 }
 
 async function persist(activeTemplateId: string, operatorTemplates: LaunchTemplate[]): Promise<TemplateState> {
@@ -149,12 +152,31 @@ function mergeWithBundled(document: TemplateTransferDocument): TemplateState {
   return { activeTemplateId: document.activeTemplateId, templates: [...cloneBundled(), ...document.templates.map((template) => ({ ...structuredClone(template), source: "operator" as const }))] };
 }
 
+function repairStoredDocument(input: unknown): TemplateTransferDocument | null {
+  if (!isRecord(input) || input.format !== "gmgn-vamp-launch-templates" || input.version !== 2 || !Array.isArray(input.templates)) return null;
+  const templates: TemplateTransferDocument["templates"] = [];
+  for (const candidate of input.templates) {
+    try {
+      const template = validateTemplate(candidate, "stored template");
+      if (!isBundledId(template.id) && !templates.some(({ id }) => id === template.id)) templates.push(template);
+    } catch { /* Drop only the invalid stored template. */ }
+  }
+  const requestedActive = typeof input.activeTemplateId === "string" ? input.activeTemplateId : DEFAULT_ACTIVE_ID;
+  const activeTemplateId = isBundledId(requestedActive) || templates.some(({ id }) => id === requestedActive)
+    ? requestedActive
+    : DEFAULT_ACTIVE_ID;
+  return { format: "gmgn-vamp-launch-templates", version: 2, activeTemplateId, templates };
+}
+
 function bundledTemplate(id: string, name: string, buyTaxPercent: number, sellTaxPercent: number): LaunchTemplate {
-  return { id, name, source: "bundled", mechanics: { paymentAssetId: "native-bnb", buyTaxPercent, sellTaxPercent, allocationBps: { creatorFunds: 10_000, burn: 0, dividend: 0, liquidity: 0 }, creatorPurchaseAmount: "0" } };
+  const mechanics: LaunchMechanics = { paymentAssetId: "native-bnb", buyTaxPercent, sellTaxPercent, allocationBps: { creatorFunds: 10_000, burn: 0, dividend: 0, liquidity: 0 }, creatorPurchaseAmount: "0" };
+  assertLaunchMechanicsInvariants(mechanics);
+  return { id, name, source: "bundled", mechanics };
 }
 function cloneBundled(): LaunchTemplate[] { return BUNDLED_TEMPLATES.map((template) => structuredClone(template)); }
 function isBundledId(id: string): boolean { return BUNDLED_TEMPLATES.some((template) => template.id === id); }
-function percent(value: unknown, path: string): number { if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 100) throw new Error(`${path} must be between 0 and 100.`); return value; }
-function basisPoints(value: unknown, path: string): number { if (!Number.isInteger(value) || (value as number) < 0 || (value as number) > 10_000) throw new Error(`${path} must be an integer between 0 and 10000.`); return value as number; }
+function percent(value: unknown, path: string): number { if (typeof value !== "number" || !Number.isFinite(value)) throw new Error(`${path} must be a finite number.`); return value; }
+function basisPoints(value: unknown, path: string): number { if (!Number.isInteger(value)) throw new Error(`${path} must be an integer.`); return value as number; }
 function assertExactKeys(record: Record<string, unknown>, expected: string[], path: string): void { const unsupported = Object.keys(record).filter((key) => !expected.includes(key)); const missing = expected.filter((key) => !(key in record)); if (unsupported.length) throw new Error(`${path} contains unsupported fields: ${unsupported.join(", ")}.`); if (missing.length) throw new Error(`${path} is missing fields: ${missing.join(", ")}.`); }
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
+import { assertLaunchMechanicsInvariants } from "./launch-mechanics";

@@ -152,8 +152,8 @@ function openForm(template?: LaunchTemplate): void {
   required<HTMLElement>("#template-form-title").textContent = template ? "Edit Launch Template" : "Create Launch Template";
   setValue("template-name", template?.name ?? "");
   populatePaymentAssetSelect(template?.mechanics.paymentAssetId);
-  setValue("buy-tax", String(template?.mechanics.buyTaxPercent ?? 0));
-  setValue("sell-tax", String(template?.mechanics.sellTaxPercent ?? 0));
+  setValue("buy-tax", String(template?.mechanics.buyTaxPercent ?? 1));
+  setValue("sell-tax", String(template?.mechanics.sellTaxPercent ?? 1));
   setValue("creator-funds-allocation", String(template?.mechanics.allocationBps.creatorFunds ?? 10_000));
   setValue("burn-allocation", String(template?.mechanics.allocationBps.burn ?? 0));
   setValue("dividend-allocation", String(template?.mechanics.allocationBps.dividend ?? 0));
