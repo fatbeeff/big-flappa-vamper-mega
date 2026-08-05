@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import { once } from "node:events";
 import type { AddressInfo } from "node:net";
-import { createRegistryHttpServer, DEFAULT_RECONCILE_INTERVAL_MS, PaymentAssetRegistry } from "../registry/server.mjs";
+import { createHttpAuthoritativeSource, createRegistryHttpServer, DEFAULT_RECONCILE_INTERVAL_MS, PaymentAssetRegistry } from "../registry/server.mjs";
 
 test("serves a keyless five-hour registry and retains its last valid reconciliation", async ({ request }) => {
   let payload: unknown = [
@@ -44,4 +44,27 @@ test("serves a keyless five-hour registry and retains its last valid reconciliat
     server.close();
     await once(server, "close");
   }
+});
+
+test("coalesces overlapping reconciliation attempts", async () => {
+  let resolveSource!: (assets: unknown) => void;
+  let calls = 0;
+  const pending = new Promise<unknown>((resolve) => { resolveSource = resolve; });
+  const registry = new PaymentAssetRegistry({ source: { listPaymentAssets: async () => { calls += 1; return pending; } } });
+
+  const first = registry.reconcile(new Date("2026-08-05T12:00:00.000Z"));
+  const overlapping = registry.reconcile(new Date("2026-08-05T13:00:00.000Z"));
+  expect(calls).toBe(1);
+  resolveSource([{ id: "coalesced", symbol: "ONE", label: "One", category: "crypto", enabled: true }]);
+  const [firstResult, overlappingResult] = await Promise.all([first, overlapping]);
+  expect(overlappingResult).toEqual(firstResult);
+  expect(overlappingResult.assets).toContainEqual(expect.objectContaining({ id: "coalesced" }));
+});
+
+test("aborts a hung authoritative HTTP request after its configured timeout", async () => {
+  const source = createHttpAuthoritativeSource("https://source.example/assets", async (_url, init) => {
+    await new Promise((_, reject) => init?.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")), { once: true }));
+    throw new Error("unreachable");
+  }, 10);
+  await expect(source.listPaymentAssets()).rejects.toThrow("timed out after 10ms");
 });

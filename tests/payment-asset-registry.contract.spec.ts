@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { reconcileFlapPaymentAssets } from "../registry/reconcile";
+import { reconcileFlapPaymentAssets } from "../registry/manifest-validation.mjs";
 import { PAYMENT_ASSET_CACHE_KEY, refreshPaymentAssetCache, validatePaymentAssetManifest } from "../src/payment-assets";
 import { ensurePaymentAssetRefreshAlarm, PAYMENT_ASSET_ALARM_NAME, PAYMENT_ASSET_ALARM_PERIOD_MINUTES } from "../src/payment-asset-scheduler";
 

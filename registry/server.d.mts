@@ -1,6 +1,7 @@
 import type { Server } from "node:http";
 
 export const DEFAULT_RECONCILE_INTERVAL_MS: number;
+export const DEFAULT_SOURCE_TIMEOUT_MS: number;
 export class PaymentAssetRegistry {
   constructor(options: { source?: { listPaymentAssets(): Promise<unknown> }; initialManifest?: unknown });
   readonly manifest: { schemaVersion: 1; generatedAt: string; assets: Array<Record<string, unknown>> };
@@ -8,3 +9,8 @@ export class PaymentAssetRegistry {
   reconcile(now?: Date): Promise<{ schemaVersion: 1; generatedAt: string; assets: Array<Record<string, unknown>> }>;
 }
 export function createRegistryHttpServer(registry: PaymentAssetRegistry): Server;
+export function createHttpAuthoritativeSource(
+  url: string,
+  fetchImpl?: typeof fetch,
+  timeoutMs?: number,
+): { listPaymentAssets(): Promise<unknown> };

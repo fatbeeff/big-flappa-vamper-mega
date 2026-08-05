@@ -15,6 +15,7 @@ const registryManifest = {
   assets: [
     { id: "native-bnb", symbol: "BNB", label: "BNB", category: "crypto", enabled: true },
     { id: "nvdab", symbol: "NVDAB", label: "NVIDIA", category: "rwa", enabled: false, unavailableReason: "Temporarily disabled by Flap" },
+    { id: "new-rwa", symbol: "NEWRWA", label: "New Remote RWA", category: "rwa", enabled: true },
   ],
 };
 
@@ -71,6 +72,7 @@ test.describe("payment-asset registry cache", () => {
     await expect(popup.getByText("Payment assets refreshed.")).toBeVisible();
     await expect(popup.getByText(/Cache fresh · last refreshed/)).toBeVisible();
     await expect(popup.getByRole("region", { name: "RWA registry assets" })).toContainText("NVIDIAUnavailable");
+    await expect(popup.getByRole("region", { name: "RWA registry assets" })).toContainText("NEWRWA · New Remote RWAEnabled");
     await clearTestRegistry();
   });
 

@@ -4,12 +4,14 @@ import bundledManifest from "./payment-assets.json" with { type: "json" };
 import { manifestFromAuthoritativePayload, validateManifest } from "./manifest-validation.mjs";
 
 export const DEFAULT_RECONCILE_INTERVAL_MS = 5 * 60 * 60 * 1000;
+export const DEFAULT_SOURCE_TIMEOUT_MS = 15_000;
 
 export class PaymentAssetRegistry {
   #manifest;
   #source;
   #lastError = null;
   #lastAttemptAt = null;
+  #inFlight = null;
 
   constructor({ source, initialManifest = bundledManifest }) {
     this.#source = source;
@@ -19,25 +21,40 @@ export class PaymentAssetRegistry {
   get manifest() { return structuredClone(this.#manifest); }
   get status() { return { configured: Boolean(this.#source), generatedAt: this.#manifest.generatedAt, lastAttemptAt: this.#lastAttemptAt, lastError: this.#lastError }; }
 
-  async reconcile(now = new Date()) {
-    if (!this.#source) return this.manifest;
+  reconcile(now = new Date()) {
+    if (!this.#source) return Promise.resolve(this.manifest);
+    if (this.#inFlight) return this.#inFlight;
     this.#lastAttemptAt = now.toISOString();
-    try {
-      this.#manifest = manifestFromAuthoritativePayload(await this.#source.listPaymentAssets(), now);
-      this.#lastError = null;
-    } catch (error) {
-      this.#lastError = error instanceof Error ? error.message : "Authoritative payment-asset reconciliation failed.";
-    }
-    return this.manifest;
+    const operation = (async () => {
+      try {
+        this.#manifest = manifestFromAuthoritativePayload(await this.#source.listPaymentAssets(), now);
+        this.#lastError = null;
+      } catch (error) {
+        this.#lastError = error instanceof Error ? error.message : "Authoritative payment-asset reconciliation failed.";
+      }
+      return this.manifest;
+    })();
+    this.#inFlight = operation;
+    void operation.finally(() => { if (this.#inFlight === operation) this.#inFlight = null; });
+    return operation;
   }
 }
 
-export function createHttpAuthoritativeSource(url, fetchImpl = fetch) {
+export function createHttpAuthoritativeSource(url, fetchImpl = fetch, timeoutMs = DEFAULT_SOURCE_TIMEOUT_MS) {
   const endpoint = new URL(url);
   return { async listPaymentAssets() {
-    const response = await fetchImpl(endpoint, { headers: { accept: "application/json" } });
-    if (!response.ok) throw new Error(`Authoritative source responded with ${response.status}.`);
-    return response.json();
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetchImpl(endpoint, { headers: { accept: "application/json" }, signal: controller.signal });
+      if (!response.ok) throw new Error(`Authoritative source responded with ${response.status}.`);
+      return response.json();
+    } catch (error) {
+      if (controller.signal.aborted) throw new Error(`Authoritative source timed out after ${timeoutMs}ms.`);
+      throw error;
+    } finally {
+      clearTimeout(timeout);
+    }
   } };
 }
 
