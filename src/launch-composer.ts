@@ -1,21 +1,29 @@
 import { getActiveTemplate } from "./launch-templates";
 import { paymentAssetLabel } from "./payment-assets";
 import type {
-  LaunchContext,
-  LaunchMetadataEnrichment,
+  LaunchImageSource,
   LaunchMetadataValues,
 } from "./launch-context";
+import type { ResolvedSourceToken } from "./gmgn-source-token";
 
 type MetadataField = keyof LaunchMetadataValues;
 
 export interface LaunchComposer {
-  open(
-    invoker: HTMLButtonElement,
-    launchContext: LaunchContext,
-    enrichment?: Promise<LaunchMetadataEnrichment>,
-  ): void;
+  open(invoker: HTMLButtonElement, sourceToken: ResolvedSourceToken): void;
   dismiss(): void;
+  readDraft(sourceAddress: string): LaunchDraftSnapshot | undefined;
 }
+
+export type LaunchDraftSnapshot = {
+  sourceAddress: string;
+  metadata: LaunchMetadataValues;
+  imageSource: LaunchImageSource;
+};
+
+type LaunchDraft = LaunchDraftSnapshot & {
+  sourceImageSource: LaunchImageSource;
+  touched: Set<MetadataField>;
+};
 
 export function createLaunchComposer(): LaunchComposer {
   const host = document.createElement("div");
@@ -107,9 +115,10 @@ export function createLaunchComposer(): LaunchComposer {
   }
 
   let invoker: HTMLButtonElement | undefined;
-  let sourceImageUrl = "";
-  let touched = new Set<MetadataField>();
+  let activeDraft: LaunchDraft | undefined;
   let openSequence = 0;
+  let ephemeralDraftSequence = 0;
+  const drafts = new Map<string, LaunchDraft>();
 
   function setImageUrl(value: string): void {
     fields.get("imageUrl")!.value = value;
@@ -129,8 +138,11 @@ export function createLaunchComposer(): LaunchComposer {
 
   for (const [name, field] of fields) {
     field.addEventListener("input", () => {
-      touched.add(name);
+      if (!activeDraft) return;
+      activeDraft.touched.add(name);
+      activeDraft.metadata[name] = field.value;
       if (name === "imageUrl") {
+        activeDraft.imageSource = imageSourceFromUrl(field.value);
         setImageUrl(field.value);
         imageStatus.textContent = "";
       }
@@ -138,22 +150,40 @@ export function createLaunchComposer(): LaunchComposer {
   }
 
   restoreButton.addEventListener("click", () => {
-    touched.add("imageUrl");
-    setImageUrl(sourceImageUrl);
+    if (!activeDraft) return;
+    activeDraft.touched.add("imageUrl");
+    activeDraft.imageSource = activeDraft.sourceImageSource;
+    activeDraft.metadata.imageUrl = imageSourceUrl(activeDraft.sourceImageSource);
+    setImageUrl(activeDraft.metadata.imageUrl);
     imageStatus.textContent = "Source image restored.";
   });
 
   imageUpload.addEventListener("change", () => {
     const file = imageUpload.files?.[0];
-    if (!file) return;
+    const draft = activeDraft;
+    const sequence = openSequence;
+    if (!file || !draft) return;
     const reader = new FileReader();
     reader.addEventListener("load", () => {
-      if (typeof reader.result !== "string") return;
-      touched.add("imageUrl");
+      if (
+        typeof reader.result !== "string"
+        || sequence !== openSequence
+        || draft !== activeDraft
+        || host.hidden
+      ) return;
+      draft.touched.add("imageUrl");
+      draft.imageSource = {
+        kind: "uploaded-file",
+        dataUrl: reader.result,
+        mediaType: file.type,
+        name: file.name,
+      };
+      draft.metadata.imageUrl = reader.result;
       setImageUrl(reader.result);
       imageStatus.textContent = "Uploaded image is ready to persist with this launch.";
     });
     reader.addEventListener("error", () => {
+      if (sequence !== openSequence || draft !== activeDraft || host.hidden) return;
       imageStatus.textContent = "The image could not be read. Captured values are unchanged.";
     });
     reader.readAsDataURL(file);
@@ -178,53 +208,99 @@ export function createLaunchComposer(): LaunchComposer {
   });
 
   return {
-    open(button, launchContext, enrichment) {
+    open(button, sourceToken) {
+      const { context, identity, enrichment } = sourceToken;
       invoker = button;
-      touched = new Set();
       imageStatus.textContent = "";
-      sourceImageUrl = launchContext.imageUrl;
-      restoreButton.disabled = !sourceImageUrl;
-      setField("originalName", launchContext.originalName);
-      setField("originalSymbol", launchContext.originalSymbol);
-      setField("imageUrl", launchContext.imageUrl);
-      setField("description", launchContext.description);
-      setField("website", launchContext.website);
-      setField("x", launchContext.x);
-      setField("telegram", launchContext.telegram);
+      const draftKey = context.sourceAddress || `ephemeral:${++ephemeralDraftSequence}`;
+      let draft = drafts.get(draftKey);
+      if (!draft) {
+        const sourceImageSource = imageSourceFromUrl(context.imageUrl);
+        draft = {
+          sourceAddress: context.sourceAddress,
+          metadata: metadataFromContext(context),
+          imageSource: sourceImageSource,
+          sourceImageSource,
+          touched: new Set(),
+        };
+        drafts.set(draftKey, draft);
+      } else {
+        mergeMissingCapturedValues(draft, context);
+      }
+      activeDraft = draft;
+      renderDraft(draft);
+      restoreButton.disabled = draft.sourceImageSource.kind === "none";
 
-      const translatedIdentity = [launchContext.translatedName, launchContext.translatedSymbol]
+      const translatedIdentity = [context.translatedName, context.translatedSymbol]
         .filter(Boolean)
         .join(" (");
       translation.textContent = translatedIdentity
-        ? `GMGN translation: ${translatedIdentity}${launchContext.translatedSymbol ? ")" : ""}`
+        ? `GMGN translation: ${translatedIdentity}${context.translatedSymbol ? ")" : ""}`
         : "";
       translation.hidden = !translation.textContent;
-      status.textContent = enrichment ? "Loading available metadata…" : "Captured metadata ready to edit.";
+      status.textContent = identity ? "Loading original token identity…" : "Captured metadata ready to edit.";
       host.hidden = false;
       closeButton.focus();
 
       const sequence = ++openSequence;
       void renderActiveTemplate(sequence);
-      enrichment?.then(
-        (values) => {
-          if (sequence !== openSequence || host.hidden) return;
-          for (const [field, value] of Object.entries(values) as Array<[MetadataField, string]>) {
-            if (field === "imageUrl" && !sourceImageUrl) {
-              sourceImageUrl = value;
-              restoreButton.disabled = !value;
-            }
-            if (!touched.has(field)) setField(field, value);
+      identity?.then(
+        (resolvedIdentity) => {
+          if (sequence !== openSequence || draft !== activeDraft || host.hidden) return;
+          if (!draft.touched.has("originalName") && !draft.metadata.originalName) {
+            draft.metadata.originalName = resolvedIdentity.name;
+            setField("originalName", resolvedIdentity.name);
           }
-          status.textContent = "Available metadata loaded.";
+          if (!draft.touched.has("originalSymbol") && !draft.metadata.originalSymbol) {
+            draft.metadata.originalSymbol = resolvedIdentity.symbol;
+            setField("originalSymbol", resolvedIdentity.symbol);
+          }
+          status.textContent = "Authoritative token identity loaded.";
         },
         () => {
-          if (sequence !== openSequence || host.hidden) return;
+          if (sequence !== openSequence || draft !== activeDraft || host.hidden) return;
+          status.textContent = "Original token identity could not be loaded. Captured metadata is unchanged.";
+        },
+      );
+      enrichment?.then(
+        (values) => {
+          if (sequence !== openSequence || draft !== activeDraft || host.hidden) return;
+          for (const [field, value] of Object.entries(values) as Array<[MetadataField, string | null | undefined]>) {
+            if (typeof value !== "string" || !value.trim()) continue;
+            if (draft.touched.has(field) || draft.metadata[field]) continue;
+            draft.metadata[field] = value;
+            if (field === "imageUrl") {
+              draft.imageSource = imageSourceFromUrl(value);
+              if (draft.sourceImageSource.kind === "none") {
+                draft.sourceImageSource = draft.imageSource;
+                restoreButton.disabled = false;
+              }
+            }
+            setField(field, value);
+          }
+        },
+        () => {
+          if (sequence !== openSequence || draft !== activeDraft || host.hidden || identity) return;
           status.textContent = "Some metadata could not be loaded. Captured values are unchanged.";
         },
       );
     },
     dismiss,
+    readDraft(sourceAddress) {
+      const draft = drafts.get(sourceAddress);
+      return draft ? {
+        sourceAddress: draft.sourceAddress,
+        metadata: { ...draft.metadata },
+        imageSource: { ...draft.imageSource },
+      } : undefined;
+    },
   };
+
+  function renderDraft(draft: LaunchDraft): void {
+    for (const [field, value] of Object.entries(draft.metadata) as Array<[MetadataField, string]>) {
+      setField(field, value);
+    }
+  }
 
   async function renderActiveTemplate(sequence: number): Promise<void> {
     const template = await getActiveTemplate();
@@ -236,4 +312,41 @@ export function createLaunchComposer(): LaunchComposer {
     const mechanics = document.createElement("p"); mechanics.textContent = `${paymentAssetLabel(template.mechanics.paymentAssetId)} · Buy tax ${template.mechanics.buyTaxPercent}% · Sell tax ${template.mechanics.sellTaxPercent}%`;
     summary.append(label, name, mechanics);
   }
+}
+
+function metadataFromContext(context: ResolvedSourceToken["context"]): LaunchMetadataValues {
+  return {
+    originalName: context.originalName,
+    originalSymbol: context.originalSymbol,
+    imageUrl: context.imageUrl,
+    description: context.description,
+    website: context.website,
+    x: context.x,
+    telegram: context.telegram,
+  };
+}
+
+function mergeMissingCapturedValues(
+  draft: LaunchDraft,
+  context: ResolvedSourceToken["context"],
+): void {
+  const captured = metadataFromContext(context);
+  for (const [field, value] of Object.entries(captured) as Array<[MetadataField, string]>) {
+    if (!value || draft.metadata[field] || draft.touched.has(field)) continue;
+    draft.metadata[field] = value;
+    if (field === "imageUrl") {
+      draft.imageSource = imageSourceFromUrl(value);
+      if (draft.sourceImageSource.kind === "none") draft.sourceImageSource = draft.imageSource;
+    }
+  }
+}
+
+function imageSourceFromUrl(url: string): LaunchImageSource {
+  return url ? { kind: "remote-url", url } : { kind: "none" };
+}
+
+function imageSourceUrl(source: LaunchImageSource): string {
+  if (source.kind === "remote-url") return source.url;
+  if (source.kind === "uploaded-file") return source.dataUrl;
+  return "";
 }

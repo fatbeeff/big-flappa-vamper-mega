@@ -90,32 +90,33 @@ export const hiddenTrenchesFixture = `<!doctype html>
   </body>
 </html>`;
 
-export type LaunchContextFixture = {
+export type SourceTokenFixture = {
   sourceAddress: string;
-  originalName: string;
-  originalSymbol: string;
-  translatedName?: string;
-  translatedSymbol?: string;
+  translatedName: string;
+  translatedSymbol: string;
   imageUrl?: string;
   description?: string;
   website?: string;
   x?: string;
   telegram?: string;
-  enrichmentUrl?: string;
+  metadataPending?: boolean;
 };
 
 export function metadataFixture(
   surface: "trenches" | "chart",
-  launchContext: LaunchContextFixture,
+  sourceToken: SourceTokenFixture,
 ): string {
-  const encodedContext = escapeHtml(JSON.stringify(launchContext));
-  const tokenDetails = `<div data-vamp-launch-context="${encodedContext}"><h2>${escapeHtml(
-    launchContext.translatedName ?? launchContext.originalName,
-  )}</h2></div>`;
+  const tokenDetails = `<div data-testid="token-context"${sourceToken.metadataPending ? ' aria-busy="true"' : ""}>
+    <h2 data-token-translation-name>${escapeHtml(sourceToken.translatedName)}</h2>
+    <span data-token-translation-symbol>${escapeHtml(sourceToken.translatedSymbol)}</span>
+    ${sourceToken.imageUrl ? `<img data-token-primary-image src="${escapeHtml(sourceToken.imageUrl)}">` : ""}
+    ${sourceToken.description ? `<p data-token-description>${escapeHtml(sourceToken.description)}</p>` : ""}
+    ${tokenLink("website", sourceToken.website)}${tokenLink("x", sourceToken.x)}${tokenLink("telegram", sourceToken.telegram)}
+  </div>`;
 
   if (surface === "trenches") {
     return `<!doctype html><html lang="en"><head><meta charset="utf-8"></head><body data-chain="bsc" data-surface="trenches"><main>
-      <article data-testid="trenches-card" data-token-address="${escapeHtml(launchContext.sourceAddress)}">
+      <article data-testid="trenches-card" data-token-address="${escapeHtml(sourceToken.sourceAddress)}">
         ${tokenDetails}
         <div data-testid="card-left-hover-rail"><button type="button" aria-label="Pin token">Pin</button></div>
         <div data-testid="card-hover-actions"><button type="button">Buy</button></div>
@@ -127,6 +128,10 @@ export function metadataFixture(
     ${tokenDetails}
     <aside data-testid="chart-action-rail"><button type="button" aria-label="Favorite">Favorite</button></aside>
   </main></body></html>`;
+}
+
+function tokenLink(kind: string, value: string | undefined): string {
+  return value ? `<a data-token-link="${kind}" href="${escapeHtml(value)}">${kind}</a>` : "";
 }
 
 function escapeHtml(value: string): string {

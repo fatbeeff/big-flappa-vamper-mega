@@ -1,13 +1,14 @@
-import { chromium, expect, test as base, type BrowserContext, type Page } from "@playwright/test";
+import { chromium, expect, test as base, type BrowserContext, type Page, type Route } from "@playwright/test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { trenchesFixture } from "../fixtures/gmgn";
 
-type ExtensionHarness = {
+export type ExtensionHarness = {
   openGmgnTokenSurface(html: string, url: string): Promise<Page>;
   openToolbarConfiguration(): Promise<Page>;
   restartBrowser(): Promise<void>;
+  mockBscRpc(handler: (route: Route) => Promise<void> | void): Promise<void>;
 };
 
 export const test = base.extend<{ extension: ExtensionHarness }>({
@@ -45,7 +46,11 @@ export const test = base.extend<{ extension: ExtensionHarness }>({
       context = await launchExtension(userDataDirectory);
     }
 
-    await use({ openGmgnTokenSurface, openToolbarConfiguration, restartBrowser });
+    async function mockBscRpc(handler: (route: Route) => Promise<void> | void): Promise<void> {
+      await context.route("https://bsc-dataseed.bnbchain.org/", handler);
+    }
+
+    await use({ openGmgnTokenSurface, openToolbarConfiguration, restartBrowser, mockBscRpc });
     await context.close();
     await rm(userDataDirectory, { recursive: true, force: true });
   },

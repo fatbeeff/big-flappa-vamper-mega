@@ -18,6 +18,10 @@
       "32": "assets/vamp-32.png"
     }
   },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "host_permissions": ["https://bsc-dataseed.bnbchain.org/*"],
   "content_scripts": [
     {
       "matches": ["https://gmgn.ai/*"],

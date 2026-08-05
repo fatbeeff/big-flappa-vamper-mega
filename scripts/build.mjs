@@ -9,7 +9,7 @@ await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 
 await build({
-  entryPoints: ["src/content.ts", "src/popup.ts", "src/route-observer.ts"],
+  entryPoints: ["src/background.ts", "src/content.ts", "src/popup.ts", "src/route-observer.ts"],
   outdir: output,
   bundle: true,
   format: "iife",

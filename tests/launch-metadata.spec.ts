@@ -1,10 +1,14 @@
-import { expect, test } from "./support/extension-harness";
-import { metadataFixture, type LaunchContextFixture } from "./fixtures/gmgn";
+import type { Route } from "@playwright/test";
+import { expect, test, type ExtensionHarness } from "./support/extension-harness";
+import { metadataFixture, type SourceTokenFixture } from "./fixtures/gmgn";
 
-const completeContext: LaunchContextFixture = {
-  sourceAddress: "0x111",
-  originalName: "蝙蝠币",
-  originalSymbol: "蝠",
+const TOKEN_A = "0x1111111111111111111111111111111111111111";
+const TOKEN_B = "0x2222222222222222222222222222222222222222";
+const NAME_SELECTOR = "0x06fdde03";
+const SYMBOL_SELECTOR = "0x95d89b41";
+
+const completeSource: SourceTokenFixture = {
+  sourceAddress: TOKEN_A,
   translatedName: "Bat Coin",
   translatedSymbol: "BAT",
   imageUrl: "https://gmgn.ai/__fixtures/bat.png",
@@ -15,42 +19,70 @@ const completeContext: LaunchContextFixture = {
 };
 
 for (const surface of ["trenches", "chart"] as const) {
-  test(`populates authoritative Launch Metadata from the ${surface} Token Surface`, async ({ extension }) => {
+  test(`resolves authoritative contract identity from the ${surface} Token Surface`, async ({ extension }) => {
     const page = await extension.openGmgnTokenSurface(
-      metadataFixture(surface, completeContext),
+      metadataFixture(surface, completeSource),
       surface === "trenches"
         ? "https://gmgn.ai/?chain=bsc&tab=trenches"
-        : "https://gmgn.ai/token/bsc/0x111",
+        : `https://gmgn.ai/token/bsc/${TOKEN_A}`,
     );
+    const calls = await mockTokenIdentity(extension, TOKEN_A, "蝙蝠币", "蝠", "string");
 
     await page.getByRole("button", { name: "Vamp this token" }).click();
     const composer = page.getByRole("dialog", { name: "Launch Composer" });
 
+    await expect(composer.getByRole("status")).toHaveText("Authoritative token identity loaded.");
     await expect(composer.getByLabel("Name")).toHaveValue("蝙蝠币");
     await expect(composer.getByLabel("Symbol")).toHaveValue("蝠");
+    await expect(composer.getByText("GMGN translation: Bat Coin (BAT)")).toBeVisible();
     await expect(composer.getByLabel("Description")).toHaveValue("The original bat token.");
     await expect(composer.getByLabel("Website")).toHaveValue("https://bat.example");
     await expect(composer.getByLabel("X")).toHaveValue("https://x.com/bat");
     await expect(composer.getByLabel("Telegram")).toHaveValue("https://t.me/bat");
-    await expect(composer.getByLabel("Image URL")).toHaveValue("https://gmgn.ai/__fixtures/bat.png");
-    await expect(composer.getByText("GMGN translation: Bat Coin (BAT)")).toBeVisible();
-    await expect(composer.getByText("0x111")).toHaveCount(0);
-    await expect(composer.getByText(/supply|deployer|tax|allocation/i)).toHaveCount(0);
+    await expect(composer.getByLabel("Image URL")).toHaveValue(completeSource.imageUrl!);
+    expect(calls).toEqual([
+      { to: TOKEN_A, data: NAME_SELECTOR },
+      { to: TOKEN_A, data: SYMBOL_SELECTOR },
+    ]);
+    await expect(composer.getByText(TOKEN_A)).toHaveCount(0);
   });
 }
 
-test("keeps every copied value editable and missing optional metadata non-blocking", async ({ extension }) => {
+test("decodes legacy bytes32 contract identity", async ({ extension }) => {
   const page = await extension.openGmgnTokenSurface(
-    metadataFixture("chart", {
-      sourceAddress: "0x222",
-      originalName: "Plain Token",
-      originalSymbol: "PLAIN",
-    }),
-    "https://gmgn.ai/token/bsc/0x222",
+    metadataFixture("chart", { sourceAddress: TOKEN_A, translatedName: "Translated", translatedSymbol: "TR" }),
+    `https://gmgn.ai/token/bsc/${TOKEN_A}`,
   );
+  await mockTokenIdentity(extension, TOKEN_A, "Legacy Token", "LEG", "bytes32");
   await page.getByRole("button", { name: "Vamp this token" }).click();
   const composer = page.getByRole("dialog", { name: "Launch Composer" });
+  await expect(composer.getByLabel("Name")).toHaveValue("Legacy Token");
+  await expect(composer.getByLabel("Symbol")).toHaveValue("LEG");
+});
 
+test("keeps translations reference-only when contract identity resolution fails", async ({ extension }) => {
+  const page = await extension.openGmgnTokenSurface(
+    metadataFixture("chart", { sourceAddress: TOKEN_A, translatedName: "Translated Name", translatedSymbol: "TRANS" }),
+    `https://gmgn.ai/token/bsc/${TOKEN_A}`,
+  );
+  await extension.mockBscRpc((route) => route.fulfill({ status: 503, body: "unavailable" }));
+  await page.getByRole("button", { name: "Vamp this token" }).click();
+  const composer = page.getByRole("dialog", { name: "Launch Composer" });
+  await expect(composer.getByRole("status")).toHaveText("Original token identity could not be loaded. Captured metadata is unchanged.");
+  await expect(composer.getByLabel("Name")).toHaveValue("");
+  await expect(composer.getByLabel("Symbol")).toHaveValue("");
+  await expect(composer.getByText("GMGN translation: Translated Name (TRANS)")).toBeVisible();
+});
+
+test("keeps every field editable when optional metadata is missing", async ({ extension }) => {
+  const page = await extension.openGmgnTokenSurface(
+    metadataFixture("chart", { sourceAddress: TOKEN_A, translatedName: "Plain", translatedSymbol: "PLAIN" }),
+    `https://gmgn.ai/token/bsc/${TOKEN_A}`,
+  );
+  await mockTokenIdentity(extension, TOKEN_A, "Plain Token", "PLAIN", "string");
+  await page.getByRole("button", { name: "Vamp this token" }).click();
+  const composer = page.getByRole("dialog", { name: "Launch Composer" });
+  await expect(composer.getByLabel("Name")).toHaveValue("Plain Token");
   for (const [label, value] of [
     ["Name", "Edited Token"],
     ["Symbol", "EDIT"],
@@ -65,101 +97,185 @@ test("keeps every copied value editable and missing optional metadata non-blocki
     await field.fill(value);
     await expect(field).toHaveValue(value);
   }
-  await expect(composer).toBeVisible();
 });
 
-test("enriches untouched fields without overwriting Operator edits", async ({ extension }) => {
-  const enrichmentUrl = "https://gmgn.ai/__fixtures/token/0x333/launch-context";
+test("contract resolution never overwrites an Operator identity edit", async ({ extension }) => {
+  const page = await extension.openGmgnTokenSurface(
+    metadataFixture("chart", { sourceAddress: TOKEN_A, translatedName: "Translated", translatedSymbol: "TR" }),
+    `https://gmgn.ai/token/bsc/${TOKEN_A}`,
+  );
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => (release = resolve));
+  await extension.mockBscRpc(async (route) => {
+    const request = route.request().postDataJSON() as { id: number; params: [{ data: string }] };
+    await released;
+    await rpcResult(route, request.id, abiString(request.params[0].data === NAME_SELECTOR ? "Contract Name" : "CHAIN"));
+  });
+  await page.getByRole("button", { name: "Vamp this token" }).click();
+  const composer = page.getByRole("dialog", { name: "Launch Composer" });
+  await composer.getByLabel("Name").fill("Operator Name");
+  release();
+  await expect(composer.getByRole("status")).toHaveText("Authoritative token identity loaded.");
+  await expect(composer.getByLabel("Name")).toHaveValue("Operator Name");
+  await expect(composer.getByLabel("Symbol")).toHaveValue("CHAIN");
+});
+
+test("enriches only missing fields and ignores empty enrichment values", async ({ extension }) => {
   const page = await extension.openGmgnTokenSurface(
     metadataFixture("trenches", {
-      sourceAddress: "0x333",
-      originalName: "Local Name",
-      originalSymbol: "LOCAL",
+      sourceAddress: TOKEN_A,
+      translatedName: "Bat Coin",
+      translatedSymbol: "BAT",
       description: "Captured description",
-      enrichmentUrl,
+      website: "https://captured.example",
+      metadataPending: true,
     }),
     "https://gmgn.ai/?chain=bsc&tab=trenches",
   );
-  let releaseEnrichment!: () => void;
-  const enrichmentReleased = new Promise<void>((resolve) => (releaseEnrichment = resolve));
-  await page.route(enrichmentUrl, async (route) => {
-    await enrichmentReleased;
-    await route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        originalName: "Authoritative Name",
-        originalSymbol: "AUTH",
-        description: "Enriched description",
-        website: "https://enriched.example",
-        imageUrl: "https://gmgn.ai/__fixtures/enriched.png",
-      }),
-    });
+  await mockTokenIdentity(extension, TOKEN_A, "Authoritative Name", "AUTH", "string");
+  await page.getByRole("button", { name: "Vamp this token" }).click();
+  const composer = page.getByRole("dialog", { name: "Launch Composer" });
+  await composer.getByLabel("Telegram").fill("https://t.me/operator");
+
+  await page.getByTestId("token-context").evaluate((context) => {
+    context.querySelector("[data-token-description]")!.textContent = "Late replacement";
+    context.querySelector<HTMLAnchorElement>('[data-token-link="website"]')!.href = "";
+    context.insertAdjacentHTML("beforeend", '<a data-token-link="x" href="https://x.com/enriched">x</a>');
+    context.insertAdjacentHTML("beforeend", '<a data-token-link="telegram" href="">telegram</a>');
+    context.setAttribute("aria-busy", "false");
   });
 
-  await page.getByRole("button", { name: "Vamp this token" }).click();
-  const composer = page.getByRole("dialog", { name: "Launch Composer" });
-  await expect(composer.getByRole("status")).toHaveText("Loading available metadata…");
-  await composer.getByLabel("Name").fill("Operator Name");
-  await composer.getByLabel("Description").fill("Operator description");
-  releaseEnrichment();
-
-  await expect(composer.getByRole("status")).toHaveText("Available metadata loaded.");
-  await expect(composer.getByLabel("Name")).toHaveValue("Operator Name");
-  await expect(composer.getByLabel("Description")).toHaveValue("Operator description");
-  await expect(composer.getByLabel("Symbol")).toHaveValue("AUTH");
-  await expect(composer.getByLabel("Website")).toHaveValue("https://enriched.example");
-  await expect(composer.getByLabel("Image URL")).toHaveValue("https://gmgn.ai/__fixtures/enriched.png");
-});
-
-test("retains captured metadata when enrichment fails", async ({ extension }) => {
-  const enrichmentUrl = "https://gmgn.ai/__fixtures/token/0x444/launch-context";
-  const page = await extension.openGmgnTokenSurface(
-    metadataFixture("chart", {
-      sourceAddress: "0x444",
-      originalName: "Captured Name",
-      originalSymbol: "CAP",
-      website: "https://captured.example",
-      enrichmentUrl,
-    }),
-    "https://gmgn.ai/token/bsc/0x444",
-  );
-  await page.route(enrichmentUrl, (route) => route.fulfill({ status: 503, body: "unavailable" }));
-
-  await page.getByRole("button", { name: "Vamp this token" }).click();
-  const composer = page.getByRole("dialog", { name: "Launch Composer" });
-  await expect(composer.getByRole("status")).toHaveText("Some metadata could not be loaded. Captured values are unchanged.");
-  await expect(composer.getByLabel("Name")).toHaveValue("Captured Name");
-  await expect(composer.getByLabel("Symbol")).toHaveValue("CAP");
+  await expect(composer.getByLabel("Description")).toHaveValue("Captured description");
   await expect(composer.getByLabel("Website")).toHaveValue("https://captured.example");
+  await expect(composer.getByLabel("X")).toHaveValue("https://x.com/enriched");
+  await expect(composer.getByLabel("Telegram")).toHaveValue("https://t.me/operator");
 });
 
-test("replaces the source image by URL or upload and restores it", async ({ extension }) => {
+test("persists typed image selection for one launch draft without leaking to another", async ({ extension }) => {
   const page = await extension.openGmgnTokenSurface(
-    metadataFixture("chart", completeContext),
-    "https://gmgn.ai/token/bsc/0x111",
+    twoTokenFixture(completeSource, {
+      sourceAddress: TOKEN_B,
+      translatedName: "Wolf Coin",
+      translatedSymbol: "WOLF",
+      imageUrl: "https://gmgn.ai/__fixtures/wolf.png",
+    }),
+    "https://gmgn.ai/?chain=bsc&tab=trenches",
   );
+  await mockIdentities(extension, new Map([
+    [TOKEN_A, { name: "Bat Contract", symbol: "BC" }],
+    [TOKEN_B, { name: "Wolf Contract", symbol: "WC" }],
+  ]));
+  const actions = page.getByRole("button", { name: "Vamp this token" });
+
+  await actions.nth(0).click();
+  const composer = page.getByRole("dialog", { name: "Launch Composer" });
+  await composer.getByLabel("Upload image").setInputFiles({
+    name: "draft-a.png",
+    mimeType: "image/png",
+    buffer: Buffer.from("draft-a-image"),
+  });
+  const persistedUpload = await composer.getByLabel("Image URL").inputValue();
+  expect(persistedUpload).toMatch(/^data:image\/png;base64,/);
+  await page.keyboard.press("Escape");
+  await actions.nth(0).click();
+  await expect(composer.getByLabel("Image URL")).toHaveValue(persistedUpload);
+  await page.keyboard.press("Escape");
+
+  await actions.nth(1).click();
+  await expect(composer.getByLabel("Image URL")).toHaveValue("https://gmgn.ai/__fixtures/wolf.png");
+  await expect(composer.getByLabel("Image URL")).not.toHaveValue(persistedUpload);
+});
+
+test("replaces the source image by URL and restores the captured source", async ({ extension }) => {
+  const page = await extension.openGmgnTokenSurface(
+    metadataFixture("chart", completeSource),
+    `https://gmgn.ai/token/bsc/${TOKEN_A}`,
+  );
+  await mockTokenIdentity(extension, TOKEN_A, "Bat Contract", "BC", "string");
   await page.getByRole("button", { name: "Vamp this token" }).click();
   const composer = page.getByRole("dialog", { name: "Launch Composer" });
-  const imageUrl = composer.getByLabel("Image URL");
-
-  await imageUrl.fill("https://images.example/replacement.png");
+  await composer.getByLabel("Image URL").fill("https://images.example/replacement.png");
   await expect(composer.getByRole("img", { name: "Token image preview" })).toHaveAttribute(
     "src",
     "https://images.example/replacement.png",
   );
-
-  await composer.getByLabel("Upload image").setInputFiles({
-    name: "replacement.png",
-    mimeType: "image/png",
-    buffer: Buffer.from("browser-test-image"),
-  });
-  await expect(imageUrl).toHaveValue(/^data:image\/png;base64,/);
-  await expect(composer.getByText("Uploaded image is ready to persist with this launch.")).toBeVisible();
-
   await composer.getByRole("button", { name: "Restore source image" }).click();
-  await expect(imageUrl).toHaveValue(completeContext.imageUrl!);
-  await expect(composer.getByRole("img", { name: "Token image preview" })).toHaveAttribute(
-    "src",
-    completeContext.imageUrl!,
-  );
+  await expect(composer.getByLabel("Image URL")).toHaveValue(completeSource.imageUrl!);
 });
+
+test("a stale upload callback cannot mutate a later launch", async ({ extension }) => {
+  const page = await extension.openGmgnTokenSurface(
+    twoTokenFixture(completeSource, {
+      sourceAddress: TOKEN_B,
+      translatedName: "Wolf Coin",
+      translatedSymbol: "WOLF",
+      imageUrl: "https://gmgn.ai/__fixtures/wolf.png",
+    }),
+    "https://gmgn.ai/?chain=bsc&tab=trenches",
+  );
+  await mockIdentities(extension, new Map([
+    [TOKEN_A, { name: "Bat Contract", symbol: "BC" }],
+    [TOKEN_B, { name: "Wolf Contract", symbol: "WC" }],
+  ]));
+  const actions = page.getByRole("button", { name: "Vamp this token" });
+  await actions.nth(0).click();
+  await page.getByRole("dialog").getByLabel("Upload image").setInputFiles({
+    name: "large.png",
+    mimeType: "image/png",
+    buffer: Buffer.alloc(16 * 1024 * 1024, 7),
+  });
+  await page.keyboard.press("Escape");
+  await actions.nth(1).click();
+  const secondImage = page.getByRole("dialog").getByLabel("Image URL");
+  await expect(secondImage).toHaveValue("https://gmgn.ai/__fixtures/wolf.png");
+  await page.waitForTimeout(250);
+  await expect(secondImage).toHaveValue("https://gmgn.ai/__fixtures/wolf.png");
+});
+
+async function mockTokenIdentity(
+  extension: ExtensionHarness,
+  address: string,
+  name: string,
+  symbol: string,
+  encoding: "string" | "bytes32",
+): Promise<Array<{ to: string; data: string }>> {
+  const calls: Array<{ to: string; data: string }> = [];
+  await extension.mockBscRpc(async (route) => {
+    const request = route.request().postDataJSON() as { id: number; params: [{ to: string; data: string }] };
+    const call = request.params[0];
+    calls.push(call);
+    const value = call.data === NAME_SELECTOR ? name : symbol;
+    await rpcResult(route, request.id, encoding === "string" ? abiString(value) : abiBytes32(value));
+  });
+  return calls;
+}
+
+async function mockIdentities(extension: ExtensionHarness, identities: Map<string, { name: string; symbol: string }>): Promise<void> {
+  await extension.mockBscRpc(async (route) => {
+    const request = route.request().postDataJSON() as { id: number; params: [{ to: string; data: string }] };
+    const call = request.params[0];
+    const identity = identities.get(call.to);
+    if (!identity) return route.fulfill({ status: 500, body: "unknown token" });
+    await rpcResult(route, request.id, abiString(call.data === NAME_SELECTOR ? identity.name : identity.symbol));
+  });
+}
+
+async function rpcResult(route: Route, id: number, result: string): Promise<void> {
+  await route.fulfill({ contentType: "application/json", body: JSON.stringify({ jsonrpc: "2.0", id, result }) });
+}
+
+function abiString(value: string): string {
+  const bytes = Buffer.from(value, "utf8").toString("hex");
+  const paddedLength = Math.ceil(bytes.length / 64) * 64;
+  return `0x${"20".padStart(64, "0")}${(bytes.length / 2).toString(16).padStart(64, "0")}${bytes.padEnd(paddedLength, "0")}`;
+}
+
+function abiBytes32(value: string): string {
+  return `0x${Buffer.from(value, "utf8").toString("hex").padEnd(64, "0")}`;
+}
+
+function twoTokenFixture(first: SourceTokenFixture, second: SourceTokenFixture): string {
+  const firstDocument = metadataFixture("trenches", first);
+  const secondCard = metadataFixture("trenches", second).match(/<article[\s\S]*?<\/article>/)![0];
+  return firstDocument.replace("</main>", `${secondCard}</main>`);
+}
