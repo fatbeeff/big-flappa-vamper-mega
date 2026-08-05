@@ -1,5 +1,13 @@
-import { getActiveTemplate } from "./launch-templates";
+import { getActiveTemplate, saveOperatorTemplate, type LaunchMechanics } from "./launch-templates";
+import {
+  mechanicsFormValues,
+  validateLaunchMechanics,
+  type LaunchMechanicsField,
+  type LaunchMechanicsFormValues,
+  type LaunchMechanicsValidation,
+} from "./launch-mechanics";
 import { getComposerPaymentAssets, paymentAssetLabel } from "./payment-assets";
+import type { PaymentAsset } from "./payment-assets";
 import type {
   LaunchImageSource,
   LaunchMetadataValues,
@@ -18,11 +26,16 @@ export type LaunchDraftSnapshot = {
   sourceAddress: string;
   metadata: LaunchMetadataValues;
   imageSource: LaunchImageSource;
+  mechanics: LaunchMechanics | null;
+  mechanicsValidation: LaunchMechanicsValidation;
 };
 
 type LaunchDraft = LaunchDraftSnapshot & {
   sourceImageSource: LaunchImageSource;
   touched: Set<MetadataField>;
+  mechanicsValues?: LaunchMechanicsFormValues;
+  activeTemplateName?: string;
+  paymentAssets?: readonly PaymentAsset[];
 };
 
 export function createLaunchComposer(): LaunchComposer {
@@ -63,6 +76,22 @@ export function createLaunchComposer(): LaunchComposer {
       .restore { padding: 0 10px; }
       .image-status { flex-basis: 100%; }
       [role="status"] { min-height: 18px; margin-bottom: 10px; color: #b0b4bc; }
+      [data-active-template] { display: grid; gap: 8px; }
+      .template-kicker { color: #989da6; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+      .mechanics-summary { color: #d8dbe0; line-height: 1.5; }
+      details { border-top: 1px solid #30333a; padding-top: 10px; }
+      summary { color: #f3f4f6; cursor: pointer; font-size: 12px; font-weight: 600; }
+      .mechanics-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+      .mechanics-fields label.wide, .allocation, .mechanics-status, .template-save { grid-column: 1 / -1; }
+      select { width: 100%; color: #f3f4f6; background: #141619; border: 1px solid #383b42; border-radius: 7px; padding: 9px 10px; font: 13px/1.35 inherit; }
+      select:focus-visible { outline: 2px solid #ff5964; outline-offset: 2px; }
+      .field-error { min-height: 0; margin: 0; color: #ff8c94; font-size: 11px; }
+      .mechanics-status { min-height: 18px; margin: 0; }
+      .mechanics-status.invalid { color: #ff8c94; }
+      .template-save { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; padding-top: 4px; }
+      .template-save[hidden] { display: none; }
+      .save-template { width: 100%; }
+      .allocation-note { grid-column: 1 / -1; color: #989da6; }
       @media (max-width: 700px) { .columns, .fields { grid-template-columns: 1fr; } .wide, .image-row { grid-column: auto; } }
     </style>
     <div class="backdrop">
@@ -222,6 +251,8 @@ export function createLaunchComposer(): LaunchComposer {
           imageSource: sourceImageSource,
           sourceImageSource,
           touched: new Set(),
+          mechanics: null,
+          mechanicsValidation: { valid: false, errors: {} },
         };
         drafts.set(draftKey, draft);
       } else {
@@ -292,6 +323,8 @@ export function createLaunchComposer(): LaunchComposer {
         sourceAddress: draft.sourceAddress,
         metadata: { ...draft.metadata },
         imageSource: { ...draft.imageSource },
+        mechanics: draft.mechanics ? structuredClone(draft.mechanics) : null,
+        mechanicsValidation: structuredClone(draft.mechanicsValidation),
       } : undefined;
     },
   };
@@ -305,14 +338,147 @@ export function createLaunchComposer(): LaunchComposer {
   async function renderActiveTemplate(sequence: number): Promise<void> {
     // Both reads are extension-local. Opening never waits for the registry.
     const [template, assets] = await Promise.all([getActiveTemplate(), getComposerPaymentAssets()]);
-    if (sequence !== openSequence || host.hidden) return;
-    const summary = shadow.querySelector<HTMLElement>("[data-active-template]")!;
-    summary.replaceChildren();
-    const label = document.createElement("p"); label.textContent = "Active Template";
-    const name = document.createElement("strong"); name.textContent = template.name;
-    const mechanics = document.createElement("p"); mechanics.textContent = `${paymentAssetLabel(template.mechanics.paymentAssetId, assets)} · Buy tax ${template.mechanics.buyTaxPercent}% · Sell tax ${template.mechanics.sellTaxPercent}%`;
-    summary.append(label, name, mechanics);
+    const draft = activeDraft;
+    if (sequence !== openSequence || host.hidden || !draft) return;
+    if (!draft.mechanicsValues) draft.mechanicsValues = mechanicsFormValues(template.mechanics);
+    draft.activeTemplateName ??= template.name;
+    draft.paymentAssets = assets;
+    renderMechanicsEditor(draft);
   }
+
+  function renderMechanicsEditor(draft: LaunchDraft): void {
+    const container = shadow.querySelector<HTMLElement>("[data-active-template]")!;
+    container.innerHTML = `
+      <span class="template-kicker">Active Template</span>
+      <strong data-template-name></strong>
+      <p class="mechanics-summary" data-mechanics-summary></p>
+      <details>
+        <summary>Edit Launch Mechanics</summary>
+        <div class="mechanics-fields">
+          <label class="wide">Payment asset<select name="paymentAssetId" aria-label="Payment quote asset" aria-describedby="paymentAssetId-error"></select><p class="field-error" id="paymentAssetId-error"></p></label>
+          <label>Buy tax (%)<input name="buyTaxPercent" type="number" min="0" max="10" step="0.01" aria-label="Buy fee rate" aria-describedby="buyTaxPercent-error tax-error"><p class="field-error" id="buyTaxPercent-error"></p></label>
+          <label>Sell tax (%)<input name="sellTaxPercent" type="number" min="0" max="10" step="0.01" aria-label="Sell fee rate" aria-describedby="sellTaxPercent-error tax-error"><p class="field-error" id="sellTaxPercent-error"></p></label>
+          <p class="field-error allocation" id="tax-error"></p>
+          <label>Creator funds (bps)<input name="creatorFundsBps" type="number" min="0" max="10000" step="1" aria-describedby="creatorFundsBps-error allocation-error"><p class="field-error" id="creatorFundsBps-error"></p></label>
+          <label>Burn (bps)<input name="burnBps" type="number" min="0" max="10000" step="1" aria-describedby="burnBps-error allocation-error"><p class="field-error" id="burnBps-error"></p></label>
+          <label>Dividend (bps)<input name="dividendBps" type="number" min="0" max="10000" step="1" aria-describedby="dividendBps-error allocation-error"><p class="field-error" id="dividendBps-error"></p></label>
+          <label>Liquidity (bps)<input name="liquidityBps" type="number" min="0" max="10000" step="1" aria-describedby="liquidityBps-error allocation-error"><p class="field-error" id="liquidityBps-error"></p></label>
+          <p class="allocation-note">Standard non-vault allocation must total 10,000 bps.</p>
+          <p class="field-error allocation" id="allocation-error"></p>
+          <label class="wide">Creator purchase<input name="creatorPurchaseAmount" inputmode="decimal" aria-describedby="creatorPurchaseAmount-error"><p class="field-error" id="creatorPurchaseAmount-error"></p></label>
+          <p class="mechanics-status" role="status" aria-live="polite"></p>
+          <button class="save-template" type="button">Save as Template</button>
+          <form class="template-save" hidden>
+            <label>Template name<input name="templateName" aria-label="Template title" autocomplete="off"></label>
+            <button type="submit">Save</button>
+            <button type="button" data-cancel-template>Cancel</button>
+          </form>
+        </div>
+      </details>`;
+    container.querySelector<HTMLElement>("[data-template-name]")!.textContent = draft.activeTemplateName ?? "Active Template";
+
+    const values = draft.mechanicsValues!;
+    const assets = draft.paymentAssets ?? [];
+    const select = container.querySelector<HTMLSelectElement>('select[name="paymentAssetId"]')!;
+    for (const category of ["crypto", "rwa"] as const) {
+      const group = document.createElement("optgroup");
+      group.label = category === "crypto" ? "Crypto" : "RWA";
+      for (const asset of assets.filter((item) => item.category === category)) {
+        const identity = asset.symbol === asset.label ? asset.label : `${asset.symbol} · ${asset.label}`;
+        const option = new Option(`${identity}${asset.enabled ? "" : " — Unavailable"}`, asset.id);
+        option.disabled = !asset.enabled;
+        group.append(option);
+      }
+      select.append(group);
+    }
+    if (!assets.some(({ id }) => id === values.paymentAssetId)) {
+      const missing = new Option(`${values.paymentAssetId} — Unavailable`, values.paymentAssetId, true, true);
+      missing.disabled = true;
+      select.prepend(missing);
+    }
+    select.value = values.paymentAssetId;
+
+    const fieldNames: Array<Exclude<keyof LaunchMechanicsFormValues, "paymentAssetId">> = [
+      "buyTaxPercent", "sellTaxPercent", "creatorFundsBps", "burnBps", "dividendBps", "liquidityBps", "creatorPurchaseAmount",
+    ];
+    for (const name of fieldNames) container.querySelector<HTMLInputElement>(`input[name="${name}"]`)!.value = values[name];
+
+    const update = (): void => {
+      values.paymentAssetId = select.value;
+      for (const name of fieldNames) values[name] = container.querySelector<HTMLInputElement>(`input[name="${name}"]`)!.value;
+      const validation = validateLaunchMechanics(values, assets);
+      draft.mechanicsValidation = validation;
+      draft.mechanics = validation.mechanics ? structuredClone(validation.mechanics) : null;
+      renderMechanicsValidation(container, validation);
+      container.querySelector<HTMLElement>("[data-mechanics-summary]")!.textContent = mechanicsSummary(values, assets);
+      container.querySelector<HTMLButtonElement>(".save-template")!.disabled = !validation.valid;
+    };
+    select.addEventListener("change", update);
+    for (const name of fieldNames) container.querySelector<HTMLInputElement>(`input[name="${name}"]`)!.addEventListener("input", update);
+
+    const saveButton = container.querySelector<HTMLButtonElement>(".save-template")!;
+    const saveForm = container.querySelector<HTMLFormElement>(".template-save")!;
+    const templateName = saveForm.elements.namedItem("templateName") as HTMLInputElement;
+    saveButton.addEventListener("click", () => {
+      saveForm.hidden = false;
+      templateName.focus();
+    });
+    container.querySelector<HTMLButtonElement>("[data-cancel-template]")!.addEventListener("click", () => {
+      saveForm.hidden = true;
+      templateName.value = "";
+    });
+    saveForm.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      update();
+      const validation = draft.mechanicsValidation;
+      const mechanicsStatus = container.querySelector<HTMLElement>(".mechanics-status")!;
+      if (!validation.valid || !validation.mechanics) return;
+      if (!templateName.value.trim()) {
+        mechanicsStatus.textContent = "Enter a template name.";
+        mechanicsStatus.classList.add("invalid");
+        return;
+      }
+      try {
+        await saveOperatorTemplate({
+          id: crypto.randomUUID(),
+          name: templateName.value.trim(),
+          mechanics: structuredClone(validation.mechanics),
+        });
+        saveForm.hidden = true;
+        templateName.value = "";
+        mechanicsStatus.textContent = "Launch Template saved. It is available in extension configuration.";
+        mechanicsStatus.classList.remove("invalid");
+      } catch (error) {
+        mechanicsStatus.textContent = error instanceof Error
+          ? `Launch Template not saved: ${error.message}`
+          : "Launch Template not saved.";
+        mechanicsStatus.classList.add("invalid");
+      }
+    });
+    update();
+  }
+}
+
+function mechanicsSummary(values: LaunchMechanicsFormValues, assets: readonly PaymentAsset[]): string {
+  const allocation = `${values.creatorFundsBps}/${values.burnBps}/${values.dividendBps}/${values.liquidityBps} bps`;
+  return `${paymentAssetLabel(values.paymentAssetId, assets)} · Buy tax ${values.buyTaxPercent}% · Sell tax ${values.sellTaxPercent}% · Allocation ${allocation} · Creator purchase ${values.creatorPurchaseAmount}`;
+}
+
+function renderMechanicsValidation(container: HTMLElement, validation: LaunchMechanicsValidation): void {
+  const fields: LaunchMechanicsField[] = [
+    "paymentAssetId", "buyTaxPercent", "sellTaxPercent", "tax", "creatorFundsBps", "burnBps", "dividendBps", "liquidityBps", "allocation", "creatorPurchaseAmount",
+  ];
+  for (const field of fields) {
+    container.querySelector<HTMLElement>(`#${field}-error`)!.textContent = validation.errors[field] ?? "";
+    const control = container.querySelector<HTMLInputElement | HTMLSelectElement>(`[name="${field}"]`);
+    if (control) control.setAttribute("aria-invalid", validation.errors[field] ? "true" : "false");
+  }
+  const status = container.querySelector<HTMLElement>(".mechanics-status")!;
+  const errorCount = Object.keys(validation.errors).length;
+  status.textContent = validation.valid
+    ? "Launch Mechanics satisfy Flap pre-broadcast requirements."
+    : `Launch Mechanics need ${errorCount} correction${errorCount === 1 ? "" : "s"}.`;
+  status.classList.toggle("invalid", !validation.valid);
 }
 
 function metadataFromContext(context: ResolvedSourceToken["context"]): LaunchMetadataValues {

@@ -12,6 +12,7 @@
     "test:templates": "playwright test tests/template-management.spec.ts",
     "test:payment-assets": "playwright test tests/payment-assets.spec.ts tests/payment-asset-registry.contract.spec.ts tests/payment-asset-build.contract.spec.ts tests/registry-service.contract.spec.ts",
     "test:wallet": "playwright test tests/shared-wallet.spec.ts",
+    "test:mechanics": "playwright test tests/launch-mechanics.spec.ts",
     "registry:start": "node registry/server.mjs"
   },
   "devDependencies": {

@@ -56,7 +56,8 @@ test.describe("Launch Template configuration", () => {
     await expect(mechanics.getByText("Active Template", { exact: true })).toBeVisible();
     await expect(mechanics.getByText("Fast launch", { exact: true })).toBeVisible();
     await expect(mechanics).toContainText("BNB · Buy tax 3% · Sell tax 5%");
-    await expect(mechanics.getByRole("combobox")).toHaveCount(0);
+    await mechanics.getByText("Edit Launch Mechanics").click();
+    await expect(mechanics.getByLabel("Payment quote asset")).toHaveCount(1);
 
     await persisted.getByRole("button", { name: "Delete Fast launch" }).click();
     await expect(persisted).toHaveCount(0);
