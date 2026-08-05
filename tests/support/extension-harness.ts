@@ -9,6 +9,7 @@ export type ExtensionHarness = {
   openToolbarConfiguration(): Promise<Page>;
   restartBrowser(): Promise<void>;
   mockBscRpc(handler: (route: Route) => Promise<void> | void): Promise<void>;
+  setNetworkOffline(offline: boolean): Promise<void>;
 };
 
 export const test = base.extend<{ extension: ExtensionHarness }>({
@@ -50,7 +51,11 @@ export const test = base.extend<{ extension: ExtensionHarness }>({
       await context.route("https://bsc-dataseed.bnbchain.org/", handler);
     }
 
-    await use({ openGmgnTokenSurface, openToolbarConfiguration, restartBrowser, mockBscRpc });
+    async function setNetworkOffline(offline: boolean): Promise<void> {
+      await context.setOffline(offline);
+    }
+
+    await use({ openGmgnTokenSurface, openToolbarConfiguration, restartBrowser, mockBscRpc, setNetworkOffline });
     await context.close();
     await rm(userDataDirectory, { recursive: true, force: true });
   },

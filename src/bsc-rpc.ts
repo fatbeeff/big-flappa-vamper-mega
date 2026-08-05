@@ -10,6 +10,31 @@ type JsonRpcResponse = {
   error?: { message?: unknown };
 };
 
+export async function getBnbBalance(
+  address: string,
+  rpcUrl = DEFAULT_BSC_RPC_URL,
+  request: typeof fetch = fetch,
+): Promise<bigint> {
+  if (!/^0x[0-9a-f]{40}$/i.test(address)) throw new Error("Invalid BSC wallet address");
+  const response = await request(rpcUrl, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "eth_getBalance", params: [address, "latest"] }),
+  });
+  if (!response.ok) throw new Error(`BSC RPC returned ${response.status}`);
+  const payload = await response.json() as JsonRpcResponse;
+  if (payload.error || typeof payload.result !== "string" || !/^0x[0-9a-f]+$/i.test(payload.result)) {
+    throw new Error("BSC RPC balance call failed");
+  }
+  return BigInt(payload.result);
+}
+
+export function formatBnbBalance(wei: bigint): string {
+  const whole = wei / 10n ** 18n;
+  const fraction = (wei % 10n ** 18n).toString().padStart(18, "0").slice(0, 6).replace(/0+$/, "");
+  return `${whole}${fraction ? `.${fraction}` : ""} BNB`;
+}
+
 export async function resolveErc20Identity(
   address: string,
   rpcUrl = DEFAULT_BSC_RPC_URL,

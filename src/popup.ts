@@ -1,5 +1,7 @@
 import { deleteOperatorTemplate, exportOperatorTemplates, importOperatorTemplates, loadTemplateState, saveOperatorTemplate, selectActiveTemplate, type LaunchTemplate, type TemplateState } from "./launch-templates";
 import { BUNDLED_PAYMENT_ASSETS, isPaymentAssetCacheStale, loadPaymentAssetCache, loadPaymentAssetRegistryEndpoint, paymentAssetLabel, refreshPaymentAssetCache, refreshPaymentAssetsIfStale, type PaymentAsset, type PaymentAssetCache } from "./payment-assets";
+import { formatBnbBalance, getBnbBalance } from "./bsc-rpc";
+import { importSharedDeploymentWallet, loadSharedDeploymentWallet, type SharedDeploymentWallet } from "./shared-wallet";
 
 const version = document.querySelector<HTMLElement>("#extension-version");
 const list = required<HTMLElement>("#template-list");
@@ -10,14 +12,18 @@ const paymentAsset = required<HTMLSelectElement>("#payment-asset");
 let state: TemplateState;
 let editingId: string | undefined;
 let cachedAssets: readonly PaymentAsset[] = BUNDLED_PAYMENT_ASSETS;
+let walletBalanceGeneration = 0;
 
 if (version) version.textContent = chrome.runtime.getManifest().version;
 void initialize();
+void initializeWallet();
 
 required<HTMLButtonElement>("#create-template").addEventListener("click", () => openForm());
 required<HTMLButtonElement>("#cancel-template").addEventListener("click", closeForm);
 required<HTMLButtonElement>("#export-templates").addEventListener("click", exportTemplates);
 required<HTMLButtonElement>("#refresh-payment-assets").addEventListener("click", () => refreshAssets(true));
+required<HTMLButtonElement>("#refresh-wallet-balance").addEventListener("click", () => refreshWalletBalance());
+required<HTMLFormElement>("#wallet-form").addEventListener("submit", saveWallet);
 form.addEventListener("submit", saveTemplate);
 importInput.addEventListener("change", importTemplates);
 
@@ -33,6 +39,93 @@ async function initialize(): Promise<void> {
   if (cache.lastRefreshError) announceAssetStatus(`Last refresh failed: ${cache.lastRefreshError} Last valid assets retained.`, true);
   await refreshTemplates();
   if (registryEndpoint && isPaymentAssetCacheStale(cache)) void refreshAssets(false);
+}
+
+async function initializeWallet(): Promise<void> {
+  const wallet = await loadSharedDeploymentWallet();
+  if (!wallet) {
+    renderMissingWallet();
+    return;
+  }
+  renderConfiguredWallet(wallet);
+  await refreshWalletBalance(wallet);
+}
+
+async function saveWallet(event: SubmitEvent): Promise<void> {
+  event.preventDefault();
+  walletBalanceGeneration += 1;
+  const input = required<HTMLInputElement>("#wallet-private-key");
+  const candidate = input.value;
+  input.value = "";
+  try {
+    const wallet = await importSharedDeploymentWallet(candidate);
+    renderConfiguredWallet(wallet);
+    announceWallet("Shared Deployment Wallet saved.");
+    await refreshWalletBalance(wallet);
+  } catch (error) {
+    announceWallet(error instanceof Error ? `Wallet not saved: ${error.message}` : "Wallet not saved: invalid private key.", true);
+    await refreshWalletBalance();
+  }
+}
+
+function renderMissingWallet(): void {
+  required<HTMLOutputElement>("#wallet-address").textContent = "Not configured";
+  required<HTMLOutputElement>("#wallet-balance").textContent = "--";
+  setWalletConnection("Wallet not configured");
+  required<HTMLButtonElement>("#refresh-wallet-balance").hidden = true;
+  required<HTMLButtonElement>("#save-wallet").textContent = "Import wallet";
+}
+
+function renderConfiguredWallet(wallet: SharedDeploymentWallet): void {
+  required<HTMLOutputElement>("#wallet-address").textContent = wallet.address;
+  required<HTMLButtonElement>("#refresh-wallet-balance").hidden = false;
+  required<HTMLButtonElement>("#save-wallet").textContent = "Replace wallet";
+}
+
+async function refreshWalletBalance(wallet?: SharedDeploymentWallet): Promise<void> {
+  const generation = ++walletBalanceGeneration;
+  const current = wallet ?? await loadSharedDeploymentWallet();
+  if (generation !== walletBalanceGeneration) return;
+  if (!current) {
+    renderMissingWallet();
+    return;
+  }
+  const button = required<HTMLButtonElement>("#refresh-wallet-balance");
+  button.disabled = true;
+  required<HTMLOutputElement>("#wallet-balance").textContent = "Checking...";
+  setWalletConnection("Checking BSC RPC...");
+  if (!navigator.onLine) {
+    required<HTMLOutputElement>("#wallet-balance").textContent = "Unavailable";
+    setWalletConnection("Disconnected");
+    announceWallet("Balance unavailable: this browser is offline.", true);
+    button.disabled = false;
+    return;
+  }
+  try {
+    const balance = await getBnbBalance(current.address);
+    if (generation !== walletBalanceGeneration) return;
+    required<HTMLOutputElement>("#wallet-balance").textContent = formatBnbBalance(balance);
+    setWalletConnection("Connected");
+  } catch {
+    if (generation !== walletBalanceGeneration) return;
+    required<HTMLOutputElement>("#wallet-balance").textContent = "Unavailable";
+    setWalletConnection("BSC RPC unavailable");
+    announceWallet("Balance unavailable: BSC RPC request failed. Try again.", true);
+  } finally {
+    if (generation === walletBalanceGeneration) button.disabled = false;
+  }
+}
+
+function setWalletConnection(message: string): void {
+  required<HTMLOutputElement>("#wallet-connection").textContent = message;
+  required<HTMLElement>("#bsc-rpc-health").textContent = message;
+}
+
+function announceWallet(message: string, error = false): void {
+  const target = required<HTMLElement>("#wallet-status");
+  target.textContent = message;
+  target.setAttribute("role", error ? "alert" : "status");
+  target.classList.toggle("error", error);
 }
 
 async function refreshTemplates(next?: TemplateState): Promise<void> { state = next ?? await loadTemplateState(); list.replaceChildren(...state.templates.map(renderTemplate)); }

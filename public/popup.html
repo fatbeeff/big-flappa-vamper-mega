@@ -19,6 +19,26 @@
         <h2 id="setup-heading">Extension ready</h2>
         <p>Open a supported GMGN BSC token surface to begin a launch.</p>
       </section>
+      <section aria-labelledby="wallet-heading">
+        <div class="section-heading">
+          <div>
+            <h2 id="wallet-heading">Shared Deployment Wallet</h2>
+            <p>Stored in this browser profile for immediate internal launches.</p>
+          </div>
+          <button id="refresh-wallet-balance" type="button" hidden>Refresh balance</button>
+        </div>
+        <div class="wallet-details">
+          <div><span>Wallet</span><output id="wallet-address">Not configured</output></div>
+          <div><span>BNB balance</span><output id="wallet-balance">--</output></div>
+          <div><span>Connection</span><output id="wallet-connection">Wallet not configured</output></div>
+        </div>
+        <form id="wallet-form" class="wallet-form">
+          <label>Private key<input id="wallet-private-key" type="password" required autocomplete="off" spellcheck="false" placeholder="0x..."></label>
+          <button id="save-wallet" type="submit">Import wallet</button>
+        </form>
+        <p class="security-note">The private key is never displayed. Importing a new key replaces the current Shared Deployment Wallet.</p>
+        <p id="wallet-status" class="status" aria-live="polite"></p>
+      </section>
       <section aria-labelledby="payment-assets-heading">
         <div class="section-heading">
           <div><h2 id="payment-assets-heading">Asset Registry</h2><p>Cached Crypto and RWA choices used by the Launch Composer.</p></div>
@@ -58,6 +78,7 @@
       </section>
       <dl>
         <div><dt>GMGN</dt><dd>Shell connected</dd></div>
+        <div><dt>BSC RPC</dt><dd id="bsc-rpc-health">Wallet not configured</dd></div>
         <div><dt>Flap</dt><dd>Setup required</dd></div>
         <div><dt>Version</dt><dd id="extension-version">—</dd></div>
       </dl>

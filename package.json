@@ -11,6 +11,7 @@
     "test:metadata": "playwright test tests/launch-metadata.spec.ts",
     "test:templates": "playwright test tests/template-management.spec.ts",
     "test:payment-assets": "playwright test tests/payment-assets.spec.ts tests/payment-asset-registry.contract.spec.ts tests/payment-asset-build.contract.spec.ts tests/registry-service.contract.spec.ts",
+    "test:wallet": "playwright test tests/shared-wallet.spec.ts",
     "registry:start": "node registry/server.mjs"
   },
   "devDependencies": {
@@ -19,5 +20,9 @@
     "@types/node": "24.1.0",
     "esbuild": "0.25.8",
     "typescript": "5.9.2"
+  },
+  "dependencies": {
+    "@noble/curves": "2.2.0",
+    "@noble/hashes": "2.2.0"
   }
 }

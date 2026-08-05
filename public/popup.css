@@ -42,6 +42,12 @@ input, select { min-width: 0; border: 1px solid #3a3d43; border-radius: 6px; bac
 .asset-state { color: #65d7ac; }
 .asset-state.unavailable { color: #a3a6ad; }
 button:disabled { cursor: wait; opacity: .65; }
+.wallet-details { display: grid; gap: 7px; margin-top: 12px; }
+.wallet-details div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 8px; font-size: 12px; }
+.wallet-details span { color: #9da1aa; }
+.wallet-details output { overflow-wrap: anywhere; }
+.wallet-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
+.security-note { font-size: 11px; }
 dl { margin: 0; display: grid; gap: 8px; }
 dl div { display: flex; justify-content: space-between; gap: 16px; font-size: 12px; }
 dt { color: #9da1aa; }
