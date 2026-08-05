@@ -1,0 +1,7 @@
+# agent-dev-bootstrap:gitignore:start
+.env
+.env.*
+!.env.example
+.scratch/
+*.local
+# agent-dev-bootstrap:gitignore:end
