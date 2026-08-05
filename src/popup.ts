@@ -1,5 +1,5 @@
 import { deleteOperatorTemplate, exportOperatorTemplates, importOperatorTemplates, loadTemplateState, saveOperatorTemplate, selectActiveTemplate, type LaunchTemplate, type TemplateState } from "./launch-templates";
-import { BUNDLED_PAYMENT_ASSETS, isPaymentAssetCacheStale, loadPaymentAssetCache, paymentAssetLabel, refreshPaymentAssetCache, refreshPaymentAssetsIfStale, type PaymentAsset, type PaymentAssetCache } from "./payment-assets";
+import { BUNDLED_PAYMENT_ASSETS, isPaymentAssetCacheStale, loadPaymentAssetCache, loadPaymentAssetRegistryEndpoint, paymentAssetLabel, refreshPaymentAssetCache, refreshPaymentAssetsIfStale, type PaymentAsset, type PaymentAssetCache } from "./payment-assets";
 
 const version = document.querySelector<HTMLElement>("#extension-version");
 const list = required<HTMLElement>("#template-list");
@@ -22,11 +22,17 @@ form.addEventListener("submit", saveTemplate);
 importInput.addEventListener("change", importTemplates);
 
 async function initialize(): Promise<void> {
+  const registryEndpoint = await loadPaymentAssetRegistryEndpoint();
+  const refreshButton = required<HTMLButtonElement>("#refresh-payment-assets");
+  refreshButton.disabled = registryEndpoint === null;
+  required<HTMLElement>("#payment-assets-registry-state").textContent = registryEndpoint
+    ? `Remote registry configured · ${new URL(registryEndpoint).host}`
+    : "Remote registry not configured · bundled assets only";
   const cache = await loadPaymentAssetCache();
   renderPaymentAssets(cache);
   if (cache.lastRefreshError) announceAssetStatus(`Last refresh failed: ${cache.lastRefreshError} Last valid assets retained.`, true);
   await refreshTemplates();
-  if (isPaymentAssetCacheStale(cache)) void refreshAssets(false);
+  if (registryEndpoint && isPaymentAssetCacheStale(cache)) void refreshAssets(false);
 }
 
 async function refreshTemplates(next?: TemplateState): Promise<void> { state = next ?? await loadTemplateState(); list.replaceChildren(...state.templates.map(renderTemplate)); }

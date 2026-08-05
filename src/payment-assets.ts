@@ -85,7 +85,8 @@ async function performPaymentAssetRefresh(fetchManifest: () => Promise<unknown>)
 
 export async function refreshPaymentAssetsIfStale(): Promise<PaymentAssetCache> {
   const cache = await loadPaymentAssetCache();
-  return isPaymentAssetCacheStale(cache) ? refreshPaymentAssetCache() : cache;
+  if (!isPaymentAssetCacheStale(cache) || !(await paymentAssetRegistryIsConfigured())) return cache;
+  return refreshPaymentAssetCache();
 }
 
 export async function getComposerPaymentAssets(): Promise<readonly PaymentAsset[]> {
@@ -97,11 +98,23 @@ export function paymentAssetLabel(id: string, assets: readonly PaymentAsset[] = 
 }
 
 async function fetchRegistryManifest(): Promise<unknown> {
-  // The deployed registry URL replaces this adapter once Flap publishes or the
-  // team deploys an authoritative endpoint. No undocumented Flap endpoint is guessed.
-  const response = await fetch(chrome.runtime.getURL("payment-assets.json"), { cache: "no-store" });
+  const endpoint = await loadPaymentAssetRegistryEndpoint();
+  if (!endpoint) throw new Error("Remote payment-asset registry is not configured for this build.");
+  const response = await fetch(endpoint, { cache: "no-store", headers: { accept: "application/json" } });
   if (!response.ok) throw new Error(`Payment-asset registry responded with ${response.status}.`);
   return response.json();
+}
+
+export async function paymentAssetRegistryIsConfigured(): Promise<boolean> { return (await loadPaymentAssetRegistryEndpoint()) !== null; }
+export async function loadPaymentAssetRegistryEndpoint(): Promise<string | null> {
+  const response = await fetch(chrome.runtime.getURL("registry-config.json"), { cache: "no-store" });
+  if (!response.ok) return null;
+  const config: unknown = await response.json();
+  if (!isRecord(config) || typeof config.endpoint !== "string" || config.endpoint.trim() === "") return null;
+  try {
+    const endpoint = new URL(config.endpoint);
+    return endpoint.protocol === "https:" ? endpoint.href : null;
+  } catch { return null; }
 }
 
 function validateAsset(input: unknown, index: number): PaymentAsset {

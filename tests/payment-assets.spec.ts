@@ -1,5 +1,13 @@
 import { expect, test } from "./support/extension-harness";
 import { trenchesFixture } from "./fixtures/gmgn";
+import { writeFile } from "node:fs/promises";
+import path from "node:path";
+
+const registryEndpoint = "https://registry.example/v1/payment-assets";
+async function configureTestRegistry(endpoint = registryEndpoint): Promise<void> {
+  await writeFile(path.resolve("dist/registry-config.json"), `${JSON.stringify({ endpoint })}\n`);
+}
+async function clearTestRegistry(): Promise<void> { await configureTestRegistry(""); }
 
 const registryManifest = {
   schemaVersion: 1,
@@ -11,8 +19,11 @@ const registryManifest = {
 };
 
 test.describe("payment-asset registry cache", () => {
+  test.afterEach(async () => { await clearTestRegistry(); });
+
   test("renders bundled enabled and unavailable Crypto/RWA states before a refresh", async ({ extension }) => {
     const popup = await extension.openToolbarConfiguration();
+    await expect(popup.getByText("Remote registry not configured · bundled assets only")).toBeVisible();
     await expect(popup.getByRole("heading", { name: "Asset Registry" })).toBeVisible();
     await expect(popup.getByRole("region", { name: "Crypto registry assets" })).toContainText("BNB · BNBEnabled");
     await expect(popup.getByRole("region", { name: "Crypto registry assets" })).toContainText("EthereumUnavailable");
@@ -33,12 +44,13 @@ test.describe("payment-asset registry cache", () => {
   });
 
   test("marks old cached data stale and preserves it when refresh fails", async ({ extension }) => {
+    await configureTestRegistry();
     const popup = await extension.openToolbarConfiguration();
     const staleAt = new Date(Date.now() - 6 * 60 * 60 * 1000).toISOString();
     await popup.evaluate(async ({ cacheKey, manifest, staleAt }) => chrome.storage.local.set({ [cacheKey]: { manifest, refreshedAt: staleAt, lastRefreshError: null } }), {
       cacheKey: "paymentAssetCacheV1", manifest: registryManifest, staleAt,
     });
-    await popup.route("**/payment-assets.json", (route) => route.abort("failed"));
+    await popup.route(registryEndpoint, (route) => route.abort("failed"));
     await popup.reload();
     await expect(popup.getByText(/Cache stale · last refreshed/)).toBeVisible();
     await popup.getByRole("button", { name: "Force Refresh" }).click();
@@ -48,15 +60,18 @@ test.describe("payment-asset registry cache", () => {
     await popup.reload();
     await expect(popup.getByRole("alert")).toContainText(/refresh failed/i);
     await expect(popup.getByRole("region", { name: "RWA registry assets" })).toContainText("NVIDIA");
+    await clearTestRegistry();
   });
 
-  test("Force Refresh replaces the cache with a validated manifest", async ({ extension }) => {
+  test("a configured remote refresh delivers a new asset without an extension release", async ({ extension }) => {
+    await configureTestRegistry();
     const popup = await extension.openToolbarConfiguration();
-    await popup.route("**/payment-assets.json", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(registryManifest) }));
+    await popup.route(registryEndpoint, (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(registryManifest) }));
     await popup.getByRole("button", { name: "Force Refresh" }).click();
     await expect(popup.getByText("Payment assets refreshed.")).toBeVisible();
     await expect(popup.getByText(/Cache fresh · last refreshed/)).toBeVisible();
     await expect(popup.getByRole("region", { name: "RWA registry assets" })).toContainText("NVIDIAUnavailable");
+    await clearTestRegistry();
   });
 
   test("Launch Composer reads the local cache without a registry request", async ({ extension }) => {
