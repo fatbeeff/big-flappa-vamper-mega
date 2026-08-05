@@ -21,6 +21,6 @@ await Promise.all([
   cp(path.join(root, "public", "manifest.json"), path.join(output, "manifest.json")),
   cp(path.join(root, "public", "popup.html"), path.join(output, "popup.html")),
   cp(path.join(root, "public", "popup.css"), path.join(output, "popup.css")),
-  cp(path.join(root, "public", "payment-assets.json"), path.join(output, "payment-assets.json")),
+  cp(path.join(root, "registry", "payment-assets.json"), path.join(output, "payment-assets.json")),
   cp(path.join(root, "public", "assets"), path.join(output, "assets"), { recursive: true }),
 ]);

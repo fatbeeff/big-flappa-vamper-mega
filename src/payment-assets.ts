@@ -23,23 +23,12 @@ export interface PaymentAssetCache {
 
 export const PAYMENT_ASSET_CACHE_KEY = "paymentAssetCacheV1";
 export const PAYMENT_ASSET_REFRESH_INTERVAL_MS = 5 * 60 * 60 * 1000;
+const PAYMENT_ASSET_REFRESH_LOCK = "gmgn-vamp-payment-asset-refresh";
+let fallbackRefreshQueue: Promise<void> = Promise.resolve();
 
 // This artifact is also served by the minimal registry boundary. It is deliberately
 // conservative: an asset is enabled only when the reconciler has confirmed it.
-export const BUNDLED_PAYMENT_ASSET_MANIFEST: PaymentAssetManifest = {
-  schemaVersion: 1,
-  generatedAt: "2026-08-05T00:00:00.000Z",
-  assets: [
-    { id: "native-bnb", symbol: "BNB", label: "BNB", category: "crypto", enabled: true },
-    { id: "usdt", symbol: "USDT", label: "USDT", category: "crypto", enabled: true },
-    { id: "usd1", symbol: "USD1", label: "USD1", category: "crypto", enabled: true },
-    { id: "eth", symbol: "ETH", label: "Ethereum", category: "crypto", enabled: false, unavailableReason: "Not currently available for BSC tax-token launches" },
-    { id: "spcxb", symbol: "SPCXB", label: "SpaceX", category: "rwa", enabled: true },
-    { id: "nvdab", symbol: "NVDAB", label: "NVIDIA", category: "rwa", enabled: true },
-    { id: "tslab", symbol: "TSLAB", label: "Tesla", category: "rwa", enabled: true },
-    { id: "aaplb", symbol: "AAPLB", label: "Apple", category: "rwa", enabled: false, unavailableReason: "Not currently available for selection" },
-  ],
-};
+export const BUNDLED_PAYMENT_ASSET_MANIFEST: PaymentAssetManifest = validatePaymentAssetManifest(bundledManifestJson);
 
 export const BUNDLED_PAYMENT_ASSETS: readonly PaymentAsset[] = BUNDLED_PAYMENT_ASSET_MANIFEST.assets;
 
@@ -71,15 +60,24 @@ export function isPaymentAssetCacheStale(cache: PaymentAssetCache, now = Date.no
   return cache.refreshedAt === null || now - Date.parse(cache.refreshedAt) >= PAYMENT_ASSET_REFRESH_INTERVAL_MS;
 }
 
-export async function refreshPaymentAssetCache(fetchManifest: () => Promise<unknown> = fetchRegistryManifest): Promise<PaymentAssetCache> {
+export function refreshPaymentAssetCache(fetchManifest: () => Promise<unknown> = fetchRegistryManifest): Promise<PaymentAssetCache> {
+  return withRefreshLock(() => performPaymentAssetRefresh(fetchManifest));
+}
+
+async function performPaymentAssetRefresh(fetchManifest: () => Promise<unknown>): Promise<PaymentAssetCache> {
   const previous = await loadPaymentAssetCache();
+  const startedAt = Date.now();
   try {
     const manifest = validatePaymentAssetManifest(await fetchManifest());
+    const latest = await loadPaymentAssetCache();
+    if (wasRefreshedSince(latest, startedAt)) return latest;
     const next = { manifest, refreshedAt: new Date().toISOString(), lastRefreshError: null } satisfies PaymentAssetCache;
     await chrome.storage.local.set({ [PAYMENT_ASSET_CACHE_KEY]: next });
     return next;
   } catch (error) {
-    const failed = { ...previous, lastRefreshError: error instanceof Error ? error.message : "Payment-asset refresh failed." };
+    const latest = await loadPaymentAssetCache();
+    if (wasRefreshedSince(latest, startedAt)) return latest;
+    const failed = { ...(latest.refreshedAt ? latest : previous), lastRefreshError: error instanceof Error ? error.message : "Payment-asset refresh failed." };
     await chrome.storage.local.set({ [PAYMENT_ASSET_CACHE_KEY]: failed });
     return failed;
   }
@@ -120,3 +118,15 @@ function validateAsset(input: unknown, index: number): PaymentAsset {
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }
 function nonempty(value: unknown): value is string { return typeof value === "string" && value.trim().length > 0; }
 function isIsoDate(value: string): boolean { return Number.isFinite(Date.parse(value)); }
+function wasRefreshedSince(cache: PaymentAssetCache, startedAt: number): boolean { return cache.refreshedAt !== null && Date.parse(cache.refreshedAt) >= startedAt; }
+function withRefreshLock(operation: () => Promise<PaymentAssetCache>): Promise<PaymentAssetCache> {
+  if (typeof navigator !== "undefined" && navigator.locks) {
+    // Web Locks adopts the callback promise at runtime; lib.dom's generic models
+    // the callback return literally and therefore needs the flattened cast.
+    return navigator.locks.request(PAYMENT_ASSET_REFRESH_LOCK, operation) as unknown as Promise<PaymentAssetCache>;
+  }
+  const result = fallbackRefreshQueue.then(operation, operation);
+  fallbackRefreshQueue = result.then(() => undefined, () => undefined);
+  return result;
+}
+import bundledManifestJson from "../registry/payment-assets.json" with { type: "json" };
