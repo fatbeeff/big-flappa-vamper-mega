@@ -5,6 +5,7 @@ test.describe("Launch Template configuration", () => {
     let popup = await extension.openToolbarConfiguration();
 
     await expect(popup.getByRole("heading", { name: "Launch Templates" })).toBeVisible();
+    await expect(popup.getByText("Reusable Launch Mechanics for new launches.")).toBeVisible();
     await expect(popup.getByRole("radio", { name: /Balanced BNB/ })).toBeChecked();
     const bundledBalanced = popup.getByRole("article", { name: "Balanced BNB template" });
     const bundledZeroTax = popup.getByRole("article", { name: "Zero-tax BNB template" });
