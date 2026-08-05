@@ -1,4 +1,10 @@
 import type { LaunchComposer } from "./launch-composer";
+import {
+  parseLaunchContext,
+  parseLaunchMetadataEnrichment,
+  type LaunchContext,
+  type LaunchMetadataEnrichment,
+} from "./launch-context";
 
 const ACTION_NAME = "Vamp this token";
 const ACTION_SELECTOR = '[data-vamp-action="true"]';
@@ -55,7 +61,9 @@ export function installGmgnCaptureBridge(launchComposer: LaunchComposer): void {
 
     const openLaunchComposer = () => {
       hideTooltip();
-      launchComposer.open(button);
+      const launchContext = captureLaunchContext(button);
+      if (!launchContext) return;
+      launchComposer.open(button, launchContext, enrichLaunchContext(launchContext));
     };
     const show = () => showTooltip(button);
     button.addEventListener("click", openLaunchComposer);
@@ -143,6 +151,43 @@ export function installGmgnCaptureBridge(launchComposer: LaunchComposer): void {
   window.addEventListener("popstate", scheduleTokenSurfaceRefresh);
   window.addEventListener("hashchange", scheduleTokenSurfaceRefresh);
   scheduleTokenSurfaceRefresh();
+}
+
+function captureLaunchContext(button: HTMLButtonElement): LaunchContext | undefined {
+  const tokenSurface = button.closest<HTMLElement>(CARD_SELECTOR) ?? document;
+  const contextElement = tokenSurface.querySelector<HTMLElement>("[data-vamp-launch-context]");
+  const structuredContext = parseLaunchContext(contextElement?.dataset.vampLaunchContext);
+  if (structuredContext) return structuredContext;
+
+  // Keep the shell responsive when only the surface-visible identity has been captured.
+  // The authoritative integration can enrich these values after the composer opens.
+  const surfaceElement = tokenSurface instanceof HTMLElement ? tokenSurface : document.body;
+  const sourceAddress = surfaceElement.dataset.tokenAddress
+    ?? new URL(location.href).pathname.match(/\/token\/bsc\/([^/]+)/i)?.[1]
+    ?? "";
+  const visibleName = tokenSurface.querySelector("h1, h2")?.textContent?.trim() ?? "";
+  if (!visibleName) return undefined;
+  return {
+    sourceAddress,
+    originalName: visibleName,
+    originalSymbol: "",
+    imageUrl: "",
+    description: "",
+    website: "",
+    x: "",
+    telegram: "",
+  };
+}
+
+function enrichLaunchContext(
+  launchContext: LaunchContext,
+): Promise<LaunchMetadataEnrichment> | undefined {
+  if (!launchContext.enrichmentUrl) return undefined;
+
+  return fetch(launchContext.enrichmentUrl, { credentials: "same-origin" }).then(async (response) => {
+    if (!response.ok) throw new Error(`Metadata enrichment failed with ${response.status}`);
+    return parseLaunchMetadataEnrichment(await response.json());
+  });
 }
 
 function createTooltip(): HTMLDivElement {

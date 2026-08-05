@@ -8,6 +8,7 @@
     "typecheck": "tsc --noEmit",
     "test": "playwright test",
     "test:focused": "playwright test tests/extension-shell.spec.ts",
+    "test:metadata": "playwright test tests/launch-metadata.spec.ts",
     "test:templates": "playwright test tests/template-management.spec.ts"
   },
   "devDependencies": {
