@@ -28,3 +28,17 @@ Run the relevant commands before handing work back:
 - Keep generated dependencies, credentials, and local environment files out of Git.
 - Start implementation tickets in fresh agent sessions; use a written handoff when context must cross sessions.
 <!-- agent-dev-bootstrap:agents:end -->
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs live in GitHub Issues for `stealth-whiteboard/big-flappa-vamper-mega`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the five default triage labels. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository using root `CONTEXT.md` and `docs/adr/`. See `docs/agents/domain.md`.

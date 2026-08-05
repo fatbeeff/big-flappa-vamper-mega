@@ -1,23 +1,49 @@
-# Project context
+# Token Clone Launching
 
-Keep this document concise and durable. Record knowledge that future contributors and agents need across tasks.
+This context covers turning an existing token discovered on a third-party market interface into an editable, configurable Flap token launch.
 
-## Purpose
+## Language
 
-Describe what the project does and who it serves.
+**Launch Context**:
+The source token data used to seed a launch, including its identity, media, links, and contract address.
+_Avoid_: Tweet payload, scraped token
 
-## Ubiquitous language
+**Capture Bridge**:
+A replaceable integration that reads Launch Context from a Token Surface and hands it to the Launch Composer.
+_Avoid_: GMGN fork, token scraper
 
-Define important domain terms and distinguish words that are easy to confuse.
+**Launch Composer**:
+The extension-owned interface in which an Operator reviews or edits copied Launch Metadata, configures Launch Mechanics, and initiates a launch.
+_Avoid_: Deploy popup, launcher
 
-## Constraints
+**Launch Metadata**:
+The source token identity copied from a Token Surface, including its original on-chain name and symbol plus its primary image, original description, and available links. Translations are reference-only.
+_Avoid_: Launch settings, token mechanics
 
-Record product, technical, operational, and compatibility constraints.
+**Launch Mechanics**:
+The behavioral Flap configuration owned by the extension, including Crypto/RWA payment token, tax settings, creator purchase, and the selected Launch Template.
+_Avoid_: Token metrics, metadata
 
-## Current boundaries
+**Launch Template**:
+A reusable set of launch configuration choices, such as payment token, tax settings, and creator purchase. One template is the Active Template used by default; templates do not contain the unique source metadata or final token identity for a particular launch.
+_Avoid_: Preset, deploy type
 
-Describe major modules, external systems, and ownership boundaries.
+**Token Surface**:
+A third-party interface where an Operator discovers a Source Token and invokes the Vamp Action. The initial Token Surfaces are GMGN BSC trenches cards and their BSC token chart pages.
+_Avoid_: Upstream feed, our terminal
 
-## Open questions
+**Source Token**:
+The existing token selected on a Token Surface whose Launch Metadata seeds a new launch.
+_Avoid_: Original token, target token
 
-List unresolved questions that materially affect future work.
+**Vamp Action**:
+The extension action, represented by the supplied Vamp icon, that starts cloning a Source Token into a new editable launch.
+_Avoid_: Buy, copy trade, deploy
+
+**Operator**:
+A trusted member of the internal group authorized to configure launches and control the Shared Deployment Wallet.
+_Avoid_: Customer, public user
+
+**Shared Deployment Wallet**:
+The single wallet identity from which every Operator initiates token launches.
+_Avoid_: User wallet, default dev wallet
