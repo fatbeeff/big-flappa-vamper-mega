@@ -1,38 +1,15 @@
-import { chromium, expect, test, type BrowserContext, type Page } from "@playwright/test";
-import path from "node:path";
-import { chartFixture, nonBscFixture, trenchesFixture } from "./fixtures/gmgn";
-
-const extensionPath = path.resolve("dist");
-
-async function launchExtension(): Promise<BrowserContext> {
-  return chromium.launchPersistentContext("", {
-    channel: "chromium",
-    headless: true,
-    args: [
-      `--disable-extensions-except=${extensionPath}`,
-      `--load-extension=${extensionPath}`,
-    ],
-  });
-}
-
-async function routeFixture(context: BrowserContext, html: string): Promise<Page> {
-  await context.route("https://gmgn.ai/**", (route) =>
-    route.fulfill({ status: 200, contentType: "text/html", body: html }),
-  );
-  return context.newPage();
-}
+import { expect, test } from "./support/extension-harness";
+import {
+  chartFixture,
+  hiddenTrenchesFixture,
+  interleavedTrenchesFixture,
+  nonBscFixture,
+  trenchesFixture,
+} from "./fixtures/gmgn";
 
 test.describe("GMGN BSC Vamp extension shell", () => {
-  let context: BrowserContext;
-
-  test.afterEach(async () => {
-    await context?.close();
-  });
-
-  test("replaces the second Trenches Buy action and opens the shared composer", async () => {
-    context = await launchExtension();
-    const page = await routeFixture(context, trenchesFixture);
-    await page.goto("https://gmgn.ai/?chain=bsc&tab=trenches");
+  test("replaces the second Trenches Buy action and opens the Launch Composer", async ({ extension }) => {
+    const page = await extension.openGmgnTokenSurface(trenchesFixture, "https://gmgn.ai/?chain=bsc&tab=trenches");
 
     const card = page.getByTestId("trenches-card");
     const initialActionsSize = await page.locator("body").evaluate((body) => ({
@@ -42,12 +19,17 @@ test.describe("GMGN BSC Vamp extension shell", () => {
     await expect(card.getByRole("button", { name: "Buy" })).toHaveCount(1);
     const vamp = card.getByRole("button", { name: "Vamp this token" });
     await expect(vamp).toHaveCount(1);
-    await expect(vamp).toHaveAttribute("title", "Vamp this token");
     await expect
       .poll(() =>
         vamp.locator("img").evaluate((image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0),
       )
       .toBe(true);
+    await vamp.hover();
+    const tooltip = page.getByRole("tooltip", { name: "Vamp this token" });
+    await expect(tooltip).toBeVisible();
+    expect(await tooltip.evaluate((element) => getComputedStyle(element).backgroundColor)).toBe("rgb(27, 29, 33)");
+    await page.mouse.move(0, 0);
+    await expect(tooltip).toBeHidden();
     expect(
       await card.getByTestId("card-hover-actions").evaluate((actions) => ({
         width: actions.getBoundingClientRect().width,
@@ -56,22 +38,21 @@ test.describe("GMGN BSC Vamp extension shell", () => {
     ).toEqual(initialActionsSize);
 
     await vamp.focus();
+    await expect(tooltip).toBeVisible();
     await page.keyboard.press("Enter");
-    const composer = page.getByRole("dialog", { name: "Launch Composer" });
-    await expect(composer).toBeVisible();
-    await expect(composer.getByRole("heading", { name: "Launch Metadata" })).toBeVisible();
-    await expect(composer.getByRole("heading", { name: "Launch Mechanics" })).toBeVisible();
-    await expect(composer.getByRole("button", { name: "Close Launch Composer" })).toBeFocused();
+    const launchComposer = page.getByRole("dialog", { name: "Launch Composer" });
+    await expect(launchComposer).toBeVisible();
+    await expect(launchComposer.getByRole("heading", { name: "Launch Metadata" })).toBeVisible();
+    await expect(launchComposer.getByRole("heading", { name: "Launch Mechanics" })).toBeVisible();
+    await expect(launchComposer.getByRole("button", { name: "Close Launch Composer" })).toBeFocused();
 
     await page.keyboard.press("Escape");
-    await expect(composer).toBeHidden();
+    await expect(launchComposer).toBeHidden();
     await expect(vamp).toBeFocused();
   });
 
-  test("adds the same persistent action below the chart favorite control", async () => {
-    context = await launchExtension();
-    const page = await routeFixture(context, chartFixture);
-    await page.goto("https://gmgn.ai/token/bsc/0x111");
+  test("adds the same persistent action below the chart favorite and opens the Launch Composer", async ({ extension }) => {
+    const page = await extension.openGmgnTokenSurface(chartFixture, "https://gmgn.ai/token/bsc/0x111");
 
     const rail = page.getByTestId("chart-action-rail");
     const favorite = rail.getByRole("button", { name: "Favorite" });
@@ -82,42 +63,69 @@ test.describe("GMGN BSC Vamp extension shell", () => {
     );
     await vamp.focus();
     await vamp.click();
-    const composer = page.getByRole("dialog", { name: "Launch Composer" });
-    await expect(composer).toBeVisible();
+    const launchComposer = page.getByRole("dialog", { name: "Launch Composer" });
+    await expect(launchComposer).toBeVisible();
     await page.keyboard.press("Escape");
-    await expect(composer).toBeHidden();
+    await expect(launchComposer).toBeHidden();
     await expect(vamp).toBeFocused();
   });
 
-  test("does not inject on non-BSC surfaces", async () => {
-    context = await launchExtension();
-    const page = await routeFixture(context, nonBscFixture);
-    await page.goto("https://gmgn.ai/?chain=sol&tab=trenches");
+  test("does not inject on non-BSC surfaces", async ({ extension }) => {
+    const page = await extension.openGmgnTokenSurface(nonBscFixture, "https://gmgn.ai/?chain=sol&tab=trenches");
     await expect(page.getByRole("button", { name: "Vamp this token" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Buy" })).toHaveCount(2);
   });
 
-  test("removes the action when client-side navigation leaves BSC", async () => {
-    context = await launchExtension();
-    const page = await routeFixture(context, trenchesFixture);
-    await page.goto("https://gmgn.ai/?chain=bsc&tab=trenches");
+  test("tracks pushState when client-side navigation leaves BSC without DOM updates", async ({ extension }) => {
+    const page = await extension.openGmgnTokenSurface(trenchesFixture, "https://gmgn.ai/?chain=bsc&tab=trenches");
     await expect(page.getByRole("button", { name: "Vamp this token" })).toHaveCount(1);
 
     await page.evaluate(() => {
       history.pushState({}, "", "/?chain=sol&tab=trenches");
-      document.body.dataset.chain = "sol";
     });
     await expect(page.getByRole("button", { name: "Vamp this token" })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Buy" })).toHaveCount(2);
   });
 
-  test("exposes a loadable compact toolbar configuration shell", async () => {
-    context = await launchExtension();
-    let worker = context.serviceWorkers()[0];
-    worker ??= await context.waitForEvent("serviceworker");
-    const extensionId = new URL(worker.url()).host;
-    const popup = await context.newPage();
-    await popup.goto(`chrome-extension://${extensionId}/popup.html`);
+  test("tracks replaceState when client-side navigation enters BSC without DOM updates", async ({ extension }) => {
+    const page = await extension.openGmgnTokenSurface(nonBscFixture, "https://gmgn.ai/?chain=sol&tab=trenches");
+    await expect(page.getByRole("button", { name: "Vamp this token" })).toHaveCount(0);
+
+    await page.evaluate(() => history.replaceState({}, "", "/?chain=bsc&tab=trenches"));
+    await expect(page.getByRole("button", { name: "Vamp this token" })).toHaveCount(1);
+    await expect(page.getByRole("button", { name: "Buy" })).toHaveCount(1);
+  });
+
+  test("replaces the second semantic Buy action when controls are interleaved", async ({ extension }) => {
+    const page = await extension.openGmgnTokenSurface(interleavedTrenchesFixture, "https://gmgn.ai/?chain=bsc&tab=trenches");
+
+    const actions = page.getByTestId("card-hover-actions");
+    await expect(actions.getByRole("button", { name: "Buy" })).toHaveCount(1);
+    await expect(actions.getByRole("button", { name: "Favorite" })).toBeVisible();
+    await expect(actions.getByRole("button", { name: "Vamp this token" })).toHaveCount(1);
+    expect(await actions.getByRole("button", { name: "Favorite" }).evaluate((button) => button.nextElementSibling?.getAttribute("aria-label"))).toBe("Vamp this token");
+  });
+
+  test("preserves hidden hover-control geometry when the action becomes visible", async ({ extension }) => {
+    const page = await extension.openGmgnTokenSurface(hiddenTrenchesFixture, "https://gmgn.ai/?chain=bsc&tab=trenches");
+    const card = page.getByTestId("trenches-card");
+    const actions = card.getByTestId("card-hover-actions");
+    await expect(actions).toBeHidden();
+
+    const initialSize = await page.locator("body").evaluate((body) => ({
+      width: Number(body.dataset.initialActionsWidth),
+      height: Number(body.dataset.initialActionsHeight),
+    }));
+    await card.hover();
+    await expect(card.getByRole("button", { name: "Vamp this token" })).toBeVisible();
+    expect(await actions.evaluate((element) => ({
+      width: element.getBoundingClientRect().width,
+      height: element.getBoundingClientRect().height,
+    }))).toEqual(initialSize);
+  });
+
+  test("exposes a loadable compact toolbar configuration shell", async ({ extension }) => {
+    const popup = await extension.openToolbarConfiguration();
 
     await expect(popup.getByRole("heading", { name: "Configuration" })).toBeVisible();
     await expect(popup.getByRole("heading", { name: "Extension ready" })).toBeVisible();
@@ -125,10 +133,8 @@ test.describe("GMGN BSC Vamp extension shell", () => {
     await expect(popup.getByRole("button")).toHaveCount(0);
   });
 
-  test("handles inserted and recycled Trenches cards without duplicate actions", async () => {
-    context = await launchExtension();
-    const page = await routeFixture(context, trenchesFixture);
-    await page.goto("https://gmgn.ai/?chain=bsc&tab=trenches");
+  test("handles inserted and recycled Trenches cards without duplicate actions", async ({ extension }) => {
+    const page = await extension.openGmgnTokenSurface(trenchesFixture, "https://gmgn.ai/?chain=bsc&tab=trenches");
     const gmgnRequests: string[] = [];
     page.on("request", (request) => {
       if (request.url().startsWith("https://gmgn.ai/")) gmgnRequests.push(request.url());

@@ -17,10 +17,13 @@
       "32": "assets/vamp-32.png"
     }
   },
-  "background": {
-    "service_worker": "background.js"
-  },
   "content_scripts": [
+    {
+      "matches": ["https://gmgn.ai/*"],
+      "js": ["route-observer.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
     {
       "matches": ["https://gmgn.ai/*"],
       "js": ["content.js"],
