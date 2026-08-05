@@ -24,6 +24,7 @@ importInput.addEventListener("change", importTemplates);
 async function initialize(): Promise<void> {
   const cache = await loadPaymentAssetCache();
   renderPaymentAssets(cache);
+  if (cache.lastRefreshError) announceAssetStatus(`Last refresh failed: ${cache.lastRefreshError} Last valid assets retained.`, true);
   await refreshTemplates();
   if (isPaymentAssetCacheStale(cache)) void refreshAssets(false);
 }
