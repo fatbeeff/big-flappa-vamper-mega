@@ -30,9 +30,16 @@ test("readiness reserves a conservative gas budget before enabling deploy", asyn
 });
 
 test("rejects local/private image targets, redirect escapes, non-images, and oversized images", async () => {
-  for (const url of ["http://example.com/a.png", "https://localhost/a.png", "https://127.0.0.1/a.png", "https://169.254.169.254/a.png", "https://[::1]/a.png"]) {
+  for (const url of [
+    "http://example.com/a.png", "https://localhost/a.png", "https://127.0.0.1/a.png", "https://169.254.169.254/a.png",
+    "https://[::1]/a.png", "https://[::ffff:127.0.0.1]/a.png", "https://[::127.0.0.1]/a.png",
+    "https://[fe80::1]/a.png", "https://[fc00::1]/a.png", "https://[ff02::1]/a.png",
+    "https://[fec0::1]/a.png", "https://[64:ff9b::7f00:1]/a.png", "https://[2001::1]/a.png",
+    "https://[2001:db8::1]/a.png", "https://[2002:7f00:1::]/a.png", "https://[3fff::1]/a.png",
+  ]) {
     expect(() => validatePublicHttpsImageUrl(url)).toThrow();
   }
+  expect(validatePublicHttpsImageUrl("https://[2606:4700:4700::1111]/a.png").hostname).toContain("2606:4700");
 
   await expect(uploadFlapMetadata(request, async () => {
     const response = new Response(new Uint8Array([1]), { status: 200, headers: { "content-type": "image/png" } });

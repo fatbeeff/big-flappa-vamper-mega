@@ -332,18 +332,47 @@ function isPrivateIpv4(host: string): boolean {
   if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return false;
   const octets = host.split(".").map(Number);
   if (octets.some((part) => part > 255)) return true;
-  const [a, b] = octets;
+  const [a, b, c] = octets;
   return a === 0 || a === 10 || a === 127 || a >= 224
     || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254)
     || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)
-    || (a === 198 && (b === 18 || b === 19));
+    || (a === 192 && b === 0 && (c === 0 || c === 2)) || (a === 192 && b === 88 && c === 99)
+    || (a === 198 && (b === 18 || b === 19 || b === 51 && c === 100))
+    || (a === 203 && b === 0 && c === 113);
 }
 function isPrivateIpv6(host: string): boolean {
+  const groups = parseIpv6(host);
+  if (!groups) return false;
+  const [first, second] = groups;
+
+  // IPv4-compatible and IPv4-mapped forms are special-use address space.
+  // Parse the embedded address numerically because URL canonicalization turns
+  // dotted input such as ::ffff:127.0.0.1 into ::ffff:7f00:1.
+  const compatible = groups.slice(0, 6).every((group) => group === 0);
+  const mapped = groups.slice(0, 5).every((group) => group === 0) && groups[5] === 0xffff;
+  if (compatible || mapped) return true;
+
+  // Only ordinary global-unicast space is eligible. This rejects ULA,
+  // link/site-local, multicast, discard/NAT64, and all other reserved blocks.
+  if ((first & 0xe000) !== 0x2000) return true;
+  if (first === 0x2001 && second <= 0x01ff) return true; // IANA protocol assignments /23.
+  if (first === 0x2001 && second === 0x0db8) return true; // Documentation /32.
+  if (first === 0x2002) return true; // 6to4 can tunnel non-public IPv4.
+  if (first === 0x3fff && (second & 0xf000) === 0) return true; // Documentation /20.
+  return false;
+}
+
+function parseIpv6(host: string): number[] | null {
   const normalized = host.toLowerCase();
-  if (!normalized.includes(":")) return false;
-  if (normalized === "::" || normalized === "::1" || normalized.startsWith("fe8") || normalized.startsWith("fe9") || normalized.startsWith("fea") || normalized.startsWith("feb") || normalized.startsWith("fc") || normalized.startsWith("fd")) return true;
-  const mapped = normalized.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
-  return mapped ? isPrivateIpv4(mapped) : false;
+  if (!normalized.includes(":") || normalized.includes(".")) return null;
+  const halves = normalized.split("::");
+  if (halves.length > 2) return null;
+  const left = halves[0] ? halves[0].split(":") : [];
+  const right = halves.length === 2 && halves[1] ? halves[1].split(":") : [];
+  if ([...left, ...right].some((group) => !/^[0-9a-f]{1,4}$/.test(group))) return null;
+  const missing = 8 - left.length - right.length;
+  if (halves.length === 1 ? missing !== 0 : missing < 1) return null;
+  return [...left, ...Array(missing).fill("0"), ...right].map((group) => Number.parseInt(group, 16));
 }
 
 async function waitForReceipt(publicClient: PublicClient, hash: Hash, label: string): Promise<TransactionReceipt> {
