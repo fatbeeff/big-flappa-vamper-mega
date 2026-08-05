@@ -6,6 +6,10 @@ export interface PaymentAsset {
   label: string;
   category: PaymentAssetCategory;
   enabled: boolean;
+  /** BNB Chain quote-token address. Native BNB uses the zero address. */
+  address?: `0x${string}`;
+  decimals?: number;
+  usePermit?: boolean;
   unavailableReason?: string;
 }
 
@@ -119,13 +123,26 @@ export async function loadPaymentAssetRegistryEndpoint(): Promise<string | null>
 
 function validateAsset(input: unknown, index: number): PaymentAsset {
   if (!isRecord(input)) throw new Error(`Payment asset ${index + 1} is invalid.`);
-  const exact = ["id", "symbol", "label", "category", "enabled", "unavailableReason"];
+  const exact = ["id", "symbol", "label", "category", "enabled", "address", "decimals", "usePermit", "unavailableReason"];
   if (Object.keys(input).some((key) => !exact.includes(key))) throw new Error(`Payment asset ${index + 1} has unsupported fields.`);
   if (!nonempty(input.id) || !nonempty(input.symbol) || !nonempty(input.label)) throw new Error(`Payment asset ${index + 1} is missing identity.`);
   if (input.category !== "crypto" && input.category !== "rwa") throw new Error(`Payment asset ${index + 1} has an invalid category.`);
   if (typeof input.enabled !== "boolean") throw new Error(`Payment asset ${index + 1} has an invalid availability state.`);
+  if (input.address !== undefined && (typeof input.address !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(input.address))) throw new Error(`Payment asset ${input.id} has an invalid BNB Chain address.`);
+  if (input.decimals !== undefined && (!Number.isInteger(input.decimals) || Number(input.decimals) < 0 || Number(input.decimals) > 255)) throw new Error(`Payment asset ${input.id} has invalid decimals.`);
+  if (input.usePermit !== undefined && typeof input.usePermit !== "boolean") throw new Error(`Payment asset ${input.id} has an invalid permit flag.`);
   if (!input.enabled && !nonempty(input.unavailableReason)) throw new Error(`Disabled payment asset ${input.id} requires a reason.`);
-  return { id: input.id, symbol: input.symbol, label: input.label, category: input.category, enabled: input.enabled, ...(nonempty(input.unavailableReason) ? { unavailableReason: input.unavailableReason } : {}) };
+  return {
+    id: input.id,
+    symbol: input.symbol,
+    label: input.label,
+    category: input.category,
+    enabled: input.enabled,
+    ...(typeof input.address === "string" ? { address: input.address as `0x${string}` } : {}),
+    ...(Number.isInteger(input.decimals) ? { decimals: Number(input.decimals) } : {}),
+    ...(typeof input.usePermit === "boolean" ? { usePermit: input.usePermit } : {}),
+    ...(nonempty(input.unavailableReason) ? { unavailableReason: input.unavailableReason } : {}),
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> { return typeof value === "object" && value !== null && !Array.isArray(value); }

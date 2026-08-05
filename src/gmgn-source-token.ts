@@ -6,7 +6,9 @@ import {
 } from "./launch-context";
 import type { SourceTokenContractResolver } from "./source-token-contract-resolver";
 
-const CARD_SELECTOR = '[data-testid="trenches-card"]';
+const FIXTURE_CARD_SELECTOR = '[data-testid="trenches-card"]';
+const LIVE_CARD_SELECTOR = '[href^="/bsc/token/"], [href^="https://gmgn.ai/bsc/token/"]';
+const LIVE_CHART_HEADER_SELECTOR = '[data-sentry-component="BaseInfoBar"]';
 const ADDRESS_PATTERN = /^0x[0-9a-f]{40}$/i;
 const METADATA_WAIT_TIMEOUT_MS = 5_000;
 const ROUTE_CHANGE_EVENT = "vamp:locationchange";
@@ -26,7 +28,10 @@ export function createGmgnSourceTokenAdapter(
 ): GmgnSourceTokenAdapter {
   return {
     resolve(invoker) {
-      const surface = invoker.closest<HTMLElement>(CARD_SELECTOR) ?? document.querySelector<HTMLElement>("main");
+      const surface = invoker.closest<HTMLElement>(FIXTURE_CARD_SELECTOR)
+        ?? invoker.closest<HTMLElement>(LIVE_CARD_SELECTOR)
+        ?? invoker.closest<HTMLElement>(LIVE_CHART_HEADER_SELECTOR)
+        ?? document.querySelector<HTMLElement>("main");
       if (!surface) return undefined;
       const contextRoot = surface.querySelector<HTMLElement>('[data-testid="token-context"]') ?? surface;
       const sourceAddress = resolveSourceAddress(surface);
@@ -56,10 +61,13 @@ export function createGmgnSourceTokenAdapter(
 }
 
 function resolveSourceAddress(surface: HTMLElement): string {
-  const cardAddress = surface.closest<HTMLElement>(CARD_SELECTOR)?.dataset.tokenAddress
+  const cardAddress = surface.closest<HTMLElement>(FIXTURE_CARD_SELECTOR)?.dataset.tokenAddress
     ?? surface.dataset.tokenAddress;
   if (cardAddress && ADDRESS_PATTERN.test(cardAddress)) return cardAddress;
-  const routeAddress = new URL(location.href).pathname.match(/\/token\/bsc\/(0x[0-9a-f]{40})(?:\/|$)/i)?.[1];
+  const cardHref = surface.closest<HTMLElement>(LIVE_CARD_SELECTOR)?.getAttribute("href") ?? surface.getAttribute("href");
+  const hrefAddress = cardHref?.match(/\/bsc\/token\/(0x[0-9a-f]{40})(?:\/|$)/i)?.[1];
+  if (hrefAddress) return hrefAddress;
+  const routeAddress = new URL(location.href).pathname.match(/\/(?:token\/bsc|bsc\/token)\/(0x[0-9a-f]{40})(?:\/|$)/i)?.[1];
   return routeAddress ?? "";
 }
 
@@ -67,6 +75,8 @@ function captureMetadata(root: HTMLElement): LaunchMetadataEnrichment & { imageU
   return {
     imageUrl: root.querySelector<HTMLImageElement>("[data-token-primary-image]")?.currentSrc
       || root.querySelector<HTMLImageElement>("[data-token-primary-image]")?.src
+      || root.querySelector<HTMLImageElement>("img.w-full.h-full.object-cover")?.currentSrc
+      || root.querySelector<HTMLImageElement>("img.w-full.h-full.object-cover")?.src
       || "",
     description: readText(root, "[data-token-description]"),
     website: readLink(root, "website"),
@@ -138,6 +148,9 @@ function readText(root: HTMLElement, selector: string): string {
 }
 
 function readLink(root: HTMLElement, kind: string): string {
-  const raw = root.querySelector<HTMLAnchorElement>(`[data-token-link="${kind}"]`)?.getAttribute("href")?.trim();
+  const liveLabel = kind === "x" ? "twitter" : kind;
+  const raw = (root.querySelector<HTMLAnchorElement>(`[data-token-link="${kind}"]`)
+    ?? root.querySelector<HTMLAnchorElement>(`a[aria-label="${liveLabel}" i]`)
+    ?? (kind === "telegram" ? root.querySelector<HTMLElement>('[data-key="telegram"], [data-icon="IconGmgntelegram312px"]')?.closest<HTMLAnchorElement>("a") : null))?.getAttribute("href")?.trim();
   return raw && raw !== location.href ? raw : "";
 }

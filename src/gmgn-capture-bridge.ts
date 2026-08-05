@@ -3,9 +3,14 @@ import type { GmgnSourceTokenAdapter } from "./gmgn-source-token";
 
 const ACTION_NAME = "Vamp this token";
 const ACTION_SELECTOR = '[data-vamp-action="true"]';
-const CARD_SELECTOR = '[data-testid="trenches-card"]';
+const FIXTURE_CARD_SELECTOR = '[data-testid="trenches-card"]';
 const CARD_LEFT_RAIL_SELECTOR = '[data-testid="card-left-hover-rail"]';
+const LIVE_CARD_SELECTOR = '[href^="/bsc/token/"], [href^="https://gmgn.ai/bsc/token/"]';
+const LIVE_BUY_CONTAINER_SELECTOR = ".BuyButton-continer";
+const LIVE_LEFT_ACTION_SELECTOR = ".token-blacklist-button";
 const CHART_RAIL_SELECTOR = '[data-testid="chart-action-rail"]';
+const LIVE_CHART_HEADER_SELECTOR = '[data-sentry-component="BaseInfoBar"]';
+const LIVE_CHART_WATCH_SELECTOR = '[data-sentry-component="TokenWatch"]';
 const ROUTE_CHANGE_EVENT = "vamp:locationchange";
 
 export function installGmgnCaptureBridge(
@@ -21,7 +26,8 @@ export function installGmgnCaptureBridge(
     const queryChain = url.searchParams.get("chain")?.toLowerCase();
     if (queryChain) return queryChain === "bsc";
 
-    const tokenRouteChain = url.pathname.match(/\/token\/([^/]+)/i)?.[1]?.toLowerCase();
+    const tokenRouteChain = (url.pathname.match(/^\/([^/]+)\/token\//i)?.[1]
+      ?? url.pathname.match(/^\/token\/([^/]+)\//i)?.[1])?.toLowerCase();
     if (tokenRouteChain) return tokenRouteChain === "bsc";
 
     return document.body?.dataset.chain?.toLowerCase() === "bsc";
@@ -78,7 +84,7 @@ export function installGmgnCaptureBridge(
     });
   }
 
-  function createPresentationMatchedButton(reference: HTMLButtonElement): HTMLButtonElement {
+  function createPresentationMatchedButton(reference: HTMLElement): HTMLButtonElement {
     const referenceBounds = reference.getBoundingClientRect();
     const button = document.createElement("button");
     button.className = reference.className;
@@ -90,33 +96,82 @@ export function installGmgnCaptureBridge(
   }
 
   function injectTrenchesActions(): void {
-    document.querySelectorAll<HTMLElement>(CARD_SELECTOR).forEach((card) => {
+    trenchesCards().forEach((card) => {
       const leftRail = card.querySelector<HTMLElement>(CARD_LEFT_RAIL_SELECTOR);
-      if (!leftRail || leftRail.querySelector(ACTION_SELECTOR)) return;
-      const presentationReference = leftRail.querySelector<HTMLButtonElement>("button");
+      const liveReference = card.querySelector<HTMLElement>(LIVE_LEFT_ACTION_SELECTOR);
+      const liveRail = liveReference?.parentElement;
+      const rail = leftRail ?? liveRail;
+      if (!rail || rail.querySelector(ACTION_SELECTOR)) return;
+      const presentationReference = leftRail?.querySelector<HTMLElement>("button") ?? liveReference;
       if (!presentationReference) return;
 
       const button = createPresentationMatchedButton(presentationReference);
+      if (!leftRail) {
+        // The current live rail is positioned around the 40px token image. Its
+        // first two actions sit at -6px and 15px; Vamp occupies the third slot.
+        button.style.position = "absolute";
+        button.style.left = "-6px";
+        button.style.top = "36px";
+      }
       configureVampAction(button);
-      leftRail.append(button);
+      rail.append(button);
     });
+  }
+
+  function trenchesCards(): HTMLElement[] {
+    const fixtures = Array.from(document.querySelectorAll<HTMLElement>(FIXTURE_CARD_SELECTOR));
+    const live = Array.from(document.querySelectorAll<HTMLElement>(LIVE_CARD_SELECTOR))
+      .filter((candidate) => candidate.querySelector(LIVE_BUY_CONTAINER_SELECTOR));
+    return Array.from(new Set([...fixtures, ...live]));
   }
 
   function injectChartAction(): void {
     const rail = document.querySelector<HTMLElement>(CHART_RAIL_SELECTOR);
-    if (!rail || rail.querySelector(ACTION_SELECTOR)) return;
-    const favorite = rail.querySelector<HTMLButtonElement>('button[aria-label="Favorite"]');
-    if (!favorite) return;
+    if (rail) {
+      if (rail.querySelector(ACTION_SELECTOR)) return;
+      const favorite = rail.querySelector<HTMLButtonElement>('button[aria-label="Favorite"]');
+      if (!favorite) return;
 
+      const button = createPresentationMatchedButton(favorite);
+      configureVampAction(button);
+      favorite.insertAdjacentElement("afterend", button);
+      return;
+    }
+
+    const header = document.querySelector<HTMLElement>(LIVE_CHART_HEADER_SELECTOR);
+    const watch = header?.querySelector<HTMLElement>(LIVE_CHART_WATCH_SELECTOR);
+    if (!header || !watch || header.querySelector(ACTION_SELECTOR)) return;
+    const favorite = watch.querySelector<HTMLElement>(".cursor-pointer") ?? watch;
+    const bounds = favorite.getBoundingClientRect();
     const button = createPresentationMatchedButton(favorite);
     configureVampAction(button);
-    favorite.insertAdjacentElement("afterend", button);
+    const existingStack = watch.parentElement?.hasAttribute("data-vamp-chart-stack") ? watch.parentElement : null;
+    if (existingStack) {
+      button.style.position = "absolute";
+      button.style.left = "0";
+      button.style.top = `${Math.max(bounds.height, 20) + 4}px`;
+      existingStack.append(button);
+      return;
+    }
+    const stack = document.createElement("div");
+    stack.dataset.vampChartStack = "true";
+    stack.style.cssText = `position:relative;display:block;flex-shrink:0;width:${Math.max(bounds.width, 20)}px;height:${Math.max(bounds.height, 20)}px`;
+    button.style.position = "absolute";
+    button.style.left = "0";
+    button.style.top = `${Math.max(bounds.height, 20) + 4}px`;
+    watch.parentElement?.insertBefore(stack, watch);
+    stack.append(watch, button);
   }
 
   function removeTokenSurfaceActions(): void {
     document.querySelectorAll<HTMLButtonElement>(ACTION_SELECTOR).forEach((button) => {
       actionCleanup.get(button)?.();
       button.remove();
+    });
+    document.querySelectorAll<HTMLElement>("[data-vamp-chart-stack]").forEach((stack) => {
+      const watch = stack.querySelector<HTMLElement>(LIVE_CHART_WATCH_SELECTOR);
+      if (watch && stack.parentElement) stack.parentElement.insertBefore(watch, stack);
+      stack.remove();
     });
     hideTooltip();
     launchComposer.dismiss();
@@ -143,7 +198,7 @@ export function installGmgnCaptureBridge(
     childList: true,
     subtree: true,
     attributes: true,
-    attributeFilter: ["data-token-address", "data-chain", "data-surface"],
+    attributeFilter: ["data-token-address", "data-chain", "data-surface", "data-sentry-component", "href"],
   });
   window.addEventListener(ROUTE_CHANGE_EVENT, scheduleTokenSurfaceRefresh);
   window.addEventListener("popstate", scheduleTokenSurfaceRefresh);

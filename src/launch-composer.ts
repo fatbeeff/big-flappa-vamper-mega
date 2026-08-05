@@ -16,6 +16,7 @@ import type {
   LaunchMetadataValues,
 } from "./launch-context";
 import type { ResolvedSourceToken } from "./gmgn-source-token";
+import type { FlapLaunchRequest } from "./flap-contract";
 
 type MetadataField = keyof LaunchMetadataValues;
 
@@ -95,6 +96,10 @@ export function createLaunchComposer(): LaunchComposer {
       .template-save[hidden] { display: none; }
       .save-template { width: 100%; }
       .allocation-note { grid-column: 1 / -1; color: #989da6; }
+      footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 0 18px 18px; }
+      .launch-status { min-height: 18px; margin: 0; }
+      .launch-status.error { color: #ff8c94; }
+      .deploy { min-width: 150px; color: #fff; background: #8f1d29; border-color: #c33a48; font-weight: 700; }
       @media (max-width: 700px) { .columns, .fields { grid-template-columns: 1fr; } .wide, .image-row { grid-column: auto; } }
     </style>
     <div class="backdrop">
@@ -130,6 +135,7 @@ export function createLaunchComposer(): LaunchComposer {
           </section>
           <section aria-labelledby="vamp-mechanics-heading"><h2 id="vamp-mechanics-heading">Launch Mechanics</h2><div data-active-template><p>Loading Active Template…</p></div></section>
         </div>
+        <footer><p class="launch-status" aria-live="polite">Complete required fields to deploy.</p><button class="deploy" type="button" disabled>Deploy</button></footer>
       </div>
     </div>`;
   document.body.append(host);
@@ -141,6 +147,8 @@ export function createLaunchComposer(): LaunchComposer {
   const imageStatus = shadow.querySelector<HTMLElement>(".image-status")!;
   const imageUpload = shadow.querySelector<HTMLInputElement>('input[name="imageUpload"]')!;
   const restoreButton = shadow.querySelector<HTMLButtonElement>(".restore")!;
+  const deployButton = shadow.querySelector<HTMLButtonElement>(".deploy")!;
+  const launchStatus = shadow.querySelector<HTMLElement>(".launch-status")!;
   const fields = new Map<MetadataField, HTMLInputElement | HTMLTextAreaElement>();
   for (const field of Array.from(shadow.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("input[name]:not([type=file]), textarea[name]"))) {
     fields.set(field.name as MetadataField, field);
@@ -150,6 +158,10 @@ export function createLaunchComposer(): LaunchComposer {
   let activeDraft: LaunchDraft | undefined;
   let openSequence = 0;
   let ephemeralDraftSequence = 0;
+  let launchInFlight = false;
+  let launchRequestId: string | undefined;
+  let readinessGeneration = 0;
+  let readinessTimer: ReturnType<typeof setTimeout> | undefined;
   const drafts = new Map<string, LaunchDraft>();
 
   function setImageUrl(value: string): void {
@@ -178,6 +190,7 @@ export function createLaunchComposer(): LaunchComposer {
         setImageUrl(field.value);
         imageStatus.textContent = "";
       }
+      updateDeployState();
     });
   }
 
@@ -188,6 +201,7 @@ export function createLaunchComposer(): LaunchComposer {
     activeDraft.metadata.imageUrl = imageSourceUrl(activeDraft.sourceImageSource);
     setImageUrl(activeDraft.metadata.imageUrl);
     imageStatus.textContent = "Source image restored.";
+    updateDeployState();
   });
 
   imageUpload.addEventListener("change", () => {
@@ -213,6 +227,7 @@ export function createLaunchComposer(): LaunchComposer {
       draft.metadata.imageUrl = reader.result;
       setImageUrl(reader.result);
       imageStatus.textContent = "Uploaded image is ready to persist with this launch.";
+      updateDeployState();
     });
     reader.addEventListener("error", () => {
       if (sequence !== openSequence || draft !== activeDraft || host.hidden) return;
@@ -222,7 +237,7 @@ export function createLaunchComposer(): LaunchComposer {
   });
 
   const dismiss = () => {
-    if (host.hidden) return;
+    if (host.hidden || launchInFlight) return;
     host.hidden = true;
     openSequence += 1;
     if (invoker?.isConnected) invoker.focus();
@@ -237,6 +252,67 @@ export function createLaunchComposer(): LaunchComposer {
       event.preventDefault();
       dismiss();
     }
+  });
+
+  chrome.runtime.onMessage.addListener((message: unknown) => {
+    if (!launchInFlight || typeof message !== "object" || message === null) return;
+    if (Reflect.get(message, "type") !== "vamp:launch-progress" || Reflect.get(message, "requestId") !== launchRequestId) return;
+    const next = Reflect.get(message, "status");
+    if (typeof next === "string") launchStatus.textContent = next;
+  });
+
+  deployButton.addEventListener("click", () => {
+    const draft = activeDraft;
+    if (!draft || launchInFlight || !draft.mechanics || !draft.mechanicsValidation.valid) return;
+    launchInFlight = true;
+    launchRequestId = crypto.randomUUID();
+    deployButton.disabled = true;
+    closeButton.disabled = true;
+    launchStatus.classList.remove("error");
+    launchStatus.textContent = "Starting Flap preflightâ€¦";
+    const launch: FlapLaunchRequest = {
+      metadata: { ...draft.metadata },
+      imageSource: { ...draft.imageSource },
+      mechanics: structuredClone(draft.mechanics),
+    };
+    const broadcast = (): void => chrome.runtime.sendMessage({ type: "vamp:launch-token", requestId: launchRequestId, launch }, (response: unknown) => {
+      launchInFlight = false;
+      closeButton.disabled = false;
+      const runtimeError = chrome.runtime.lastError;
+      if (runtimeError) {
+        launchStatus.textContent = `Launch failed: ${runtimeError.message}. Your edits are preserved.`;
+        launchStatus.classList.add("error");
+        deployButton.disabled = false;
+        return;
+      }
+      if (typeof response === "object" && response !== null && Reflect.get(response, "ok") === true) {
+        const navigationUrl = Reflect.get(response, "navigationUrl");
+        if (typeof navigationUrl === "string") window.location.assign(navigationUrl);
+        return;
+      }
+      const error = typeof response === "object" && response !== null ? Reflect.get(response, "error") : undefined;
+      launchStatus.textContent = typeof error === "string" ? error : "Launch failed. Your edits are preserved and ready to retry.";
+      launchStatus.classList.add("error");
+      deployButton.disabled = false;
+    });
+    if (launch.imageSource.kind === "remote-url") {
+      launchStatus.textContent = "Requesting access to the public image hostâ€¦";
+      chrome.runtime.sendMessage({ type: "vamp:request-image-origin", url: launch.imageSource.url }, (response: unknown) => {
+        const runtimeError = chrome.runtime.lastError;
+        if (!runtimeError && typeof response === "object" && response !== null && Reflect.get(response, "ok") === true) {
+          broadcast();
+          return;
+        }
+        launchInFlight = false;
+        closeButton.disabled = false;
+        deployButton.disabled = false;
+        const error = runtimeError?.message ?? (typeof response === "object" && response !== null ? Reflect.get(response, "error") : undefined);
+        launchStatus.textContent = typeof error === "string" ? error : "Image-host access is required before Deploy.";
+        launchStatus.classList.add("error");
+      });
+      return;
+    }
+    broadcast();
   });
 
   return {
@@ -263,6 +339,7 @@ export function createLaunchComposer(): LaunchComposer {
       }
       activeDraft = draft;
       renderDraft(draft);
+      updateDeployState();
       restoreButton.disabled = draft.sourceImageSource.kind === "none";
 
       const translatedIdentity = [context.translatedName, context.translatedSymbol]
@@ -331,6 +408,44 @@ export function createLaunchComposer(): LaunchComposer {
       } : undefined;
     },
   };
+
+  function updateDeployState(): void {
+    const generation = ++readinessGeneration;
+    if (readinessTimer) clearTimeout(readinessTimer);
+    const draft = activeDraft;
+    const metadataValid = !!draft?.metadata.originalName.trim() && !!draft.metadata.originalSymbol.trim() && draft.imageSource.kind !== "none";
+    const valid = !!draft?.mechanicsValidation.valid && !!draft.mechanics && metadataValid;
+    deployButton.disabled = true;
+    if (launchInFlight) return;
+    launchStatus.classList.remove("error");
+    if (!valid || !draft?.mechanics) {
+      launchStatus.textContent = "Complete Flap-required metadata and mechanics to deploy.";
+      return;
+    }
+    launchStatus.textContent = "Checking Shared Deployment Wallet, balances, and payment assetâ€¦";
+    const launch: FlapLaunchRequest = { metadata: { ...draft.metadata }, imageSource: { ...draft.imageSource }, mechanics: structuredClone(draft.mechanics) };
+    readinessTimer = setTimeout(() => {
+      chrome.runtime.sendMessage({ type: "vamp:launch-readiness", launch }, (response: unknown) => {
+        if (generation !== readinessGeneration || host.hidden || launchInFlight) return;
+        const runtimeError = chrome.runtime.lastError;
+        const ok = !runtimeError && typeof response === "object" && response !== null && Reflect.get(response, "ok") === true;
+        if (ok) {
+          const navigationUrl = Reflect.get(response as object, "navigationUrl");
+          if (typeof navigationUrl === "string") {
+            launchStatus.textContent = "Confirmed launch found. Returning to GMGNâ€¦";
+            window.location.assign(navigationUrl);
+            return;
+          }
+          deployButton.disabled = false;
+          launchStatus.textContent = "Ready to sign and broadcast with the Shared Deployment Wallet.";
+          return;
+        }
+        const error = runtimeError?.message ?? (typeof response === "object" && response !== null ? Reflect.get(response, "error") : undefined);
+        launchStatus.textContent = typeof error === "string" ? error : "Launch readiness could not be verified.";
+        launchStatus.classList.add("error");
+      });
+    }, 120);
+  }
 
   function renderDraft(draft: LaunchDraft): void {
     for (const [field, value] of Object.entries(draft.metadata) as Array<[MetadataField, string]>) {
@@ -415,6 +530,7 @@ export function createLaunchComposer(): LaunchComposer {
       renderMechanicsValidation(container, validation);
       container.querySelector<HTMLElement>("[data-mechanics-summary]")!.textContent = mechanicsSummary(values, assets);
       container.querySelector<HTMLButtonElement>(".save-template")!.disabled = !validation.valid;
+      updateDeployState();
     };
     select.addEventListener("change", update);
     for (const name of fieldNames) container.querySelector<HTMLInputElement>(`input[name="${name}"]`)!.addEventListener("input", update);
