@@ -2,13 +2,13 @@
   "schemaVersion": 1,
   "generatedAt": "2026-08-05T00:00:00.000Z",
   "assets": [
-    { "id": "native-bnb", "symbol": "BNB", "label": "BNB", "category": "crypto", "enabled": true },
-    { "id": "usdt", "symbol": "USDT", "label": "USDT", "category": "crypto", "enabled": true },
-    { "id": "usd1", "symbol": "USD1", "label": "USD1", "category": "crypto", "enabled": true },
+    { "id": "native-bnb", "symbol": "BNB", "label": "BNB", "category": "crypto", "enabled": true, "address": "0x0000000000000000000000000000000000000000", "decimals": 18, "usePermit": false },
+    { "id": "usdt", "symbol": "USDT", "label": "USDT", "category": "crypto", "enabled": true, "address": "0x55d398326f99059fF775485246999027B3197955", "decimals": 18, "usePermit": false },
+    { "id": "usd1", "symbol": "USD1", "label": "USD1", "category": "crypto", "enabled": true, "address": "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d", "decimals": 18, "usePermit": true },
     { "id": "eth", "symbol": "ETH", "label": "Ethereum", "category": "crypto", "enabled": false, "unavailableReason": "Not currently available for BSC tax-token launches" },
-    { "id": "spcxb", "symbol": "SPCXB", "label": "SpaceX", "category": "rwa", "enabled": true },
-    { "id": "nvdab", "symbol": "NVDAB", "label": "NVIDIA", "category": "rwa", "enabled": true },
-    { "id": "tslab", "symbol": "TSLAB", "label": "Tesla", "category": "rwa", "enabled": true },
+    { "id": "spcxb", "symbol": "SPCXB", "label": "SpaceX", "category": "rwa", "enabled": true, "address": "0xbe9D156892E55e7154BcD3cB0FEA677F9D3103E1", "decimals": 18, "usePermit": false },
+    { "id": "nvdab", "symbol": "NVDAB", "label": "NVIDIA", "category": "rwa", "enabled": true, "address": "0x02Fca66C1D1aFB4E2A7884261eB00F63598a7436", "decimals": 18, "usePermit": false },
+    { "id": "tslab", "symbol": "TSLAB", "label": "Tesla", "category": "rwa", "enabled": true, "address": "0x5b1910eAaD6450E50f816082Aa078C41F10C292f", "decimals": 18, "usePermit": false },
     { "id": "aaplb", "symbol": "AAPLB", "label": "Apple", "category": "rwa", "enabled": false, "unavailableReason": "Not currently available for selection" }
   ]
 }

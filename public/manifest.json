@@ -21,7 +21,11 @@
   "background": {
     "service_worker": "background.js"
   },
-  "host_permissions": ["https://bsc-dataseed.bnbchain.org/*"],
+  "host_permissions": [
+    "https://bsc-dataseed.bnbchain.org/*",
+    "https://funcs.flap.sh/*",
+    "https://*/*"
+  ],
   "content_scripts": [
     {
       "matches": ["https://gmgn.ai/*"],

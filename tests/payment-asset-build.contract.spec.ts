@@ -15,6 +15,8 @@ test("build emits the configured HTTPS registry and only its exact host permissi
     expect(JSON.parse(await readFile("dist/registry-config.json", "utf8"))).toEqual({ endpoint });
     expect(JSON.parse(await readFile("dist/manifest.json", "utf8")).host_permissions).toEqual([
       "https://bsc-dataseed.bnbchain.org/*",
+      "https://funcs.flap.sh/*",
+      "https://*/*",
       "https://registry.mock.example/*",
     ]);
   } finally {

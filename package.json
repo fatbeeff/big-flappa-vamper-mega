@@ -13,6 +13,8 @@
     "test:payment-assets": "playwright test tests/payment-assets.spec.ts tests/payment-asset-registry.contract.spec.ts tests/payment-asset-build.contract.spec.ts tests/registry-service.contract.spec.ts",
     "test:wallet": "playwright test tests/shared-wallet.spec.ts",
     "test:mechanics": "playwright test tests/launch-mechanics.spec.ts",
+    "test:broadcast": "playwright test tests/flap-broadcast.contract.spec.ts tests/flap-broadcast.spec.ts",
+    "smoke:readonly": "node scripts/smoke-readonly.mjs",
     "registry:start": "node registry/server.mjs"
   },
   "devDependencies": {
@@ -24,6 +26,7 @@
   },
   "dependencies": {
     "@noble/curves": "2.2.0",
-    "@noble/hashes": "2.2.0"
+    "@noble/hashes": "2.2.0",
+    "viem": "2.55.11"
   }
 }
