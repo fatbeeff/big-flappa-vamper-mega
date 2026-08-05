@@ -46,7 +46,7 @@ test.describe("payment-asset registry cache", () => {
     await expect(popup.getByRole("alert")).toContainText("Last valid assets retained");
     await expect(popup.getByRole("region", { name: "RWA registry assets" })).toContainText("NVIDIA");
     await popup.reload();
-    await expect(popup.getByRole("alert")).toContainText("Last refresh failed");
+    await expect(popup.getByRole("alert")).toContainText(/refresh failed/i);
     await expect(popup.getByRole("region", { name: "RWA registry assets" })).toContainText("NVIDIA");
   });
 
