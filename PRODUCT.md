@@ -20,7 +20,7 @@ The product combines the discovery context and metadata already present on GMGN 
 
 ## Operating Context
 
-The initial Token Surfaces are GMGN's BSC trenches view and BSC token chart pages reached from it. The trenches action appears with the card's hover controls; the chart action appears below the favorite control. Both use the supplied Vamp icon and open an editable Launch Composer.
+The initial Token Surfaces are GMGN's BSC trenches view and BSC token chart pages reached from it. In Trenches, the action appears in the card's existing left-side hover action rail beside the token image; on the chart, it appears below the favorite control. Both use the supplied Vamp icon and open an editable Launch Composer.
 
 ## Capabilities and Constraints
 

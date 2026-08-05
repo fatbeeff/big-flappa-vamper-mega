@@ -15,7 +15,7 @@ The extension supports dynamically discovered Crypto/RWA payment assets, non-vau
 ## User Stories
 
 1. As an Operator, I want to see the Vamp Action on a BSC Trenches token card, so that I can begin a launch without leaving my scanning workflow.
-2. As an Operator, I want the Vamp Action to replace the second Buy action in the existing hover controls, so that the token card does not gain another row or change density.
+2. As an Operator, I want the Vamp Action in the existing left-side hover action rail beside the token image, so that it joins GMGN's compact token actions without depending on optional Buy-button settings.
 3. As an Operator, I want the Vamp Action to use the supplied Vamp icon, so that it is immediately recognizable without consuming space with a label.
 4. As an Operator, I want an accessible tooltip on the Vamp icon, so that its purpose is clear before I invoke it.
 5. As a keyboard-using Operator, I want the Vamp Action to be focusable and named, so that I can invoke it without a pointer.
@@ -86,7 +86,7 @@ The extension supports dynamically discovered Crypto/RWA payment assets, non-vau
 - Build a Chrome extension as the v1 delivery vehicle. A userscript is not the product boundary because the extension must own cross-origin asset access, persistent configuration, signing, multiple GMGN surfaces, and injected UI.
 - Support only GMGN's BSC Trenches surface and BSC token chart pages reached from it.
 - Treat GMGN as a Token Surface rather than recreating discovery or charting. The Capture Bridge must remain replaceable so a later J7 integration does not contaminate the core Launch Composer.
-- Replace the second Buy action in a Trenches card's hover controls with the Vamp Action. Do not add a third action or alter card geometry.
+- Add the Vamp Action to a Trenches card's existing left-side hover action rail beside the token image. Do not replace, move, or depend on any Buy action, and do not alter card geometry.
 - Add a persistent Vamp Action below the chart page's favorite control.
 - Use the supplied Vamp icon for both invocation points. Controls remain icon-only with an accessible name and GMGN-native tooltip.
 - Detect GMGN client-side route transitions and dynamically inserted or recycled card rows without a per-card observer or network request.
@@ -114,7 +114,7 @@ The extension supports dynamically discovered Crypto/RWA payment assets, non-vau
 - Wait for the first successful transaction receipt, extract the actual new token address from Flap's event, and then navigate the current tab to its GMGN BSC chart page.
 - On failure, keep the composer open, preserve all edits, expose a useful reason where possible, and allow retry.
 - The extension configuration screen owns wallet import/replacement and balance, Active Template and template administration, asset-cache status and Force Refresh, GMGN/Flap health, and extension version. It contains no token metadata or launch control.
-- Preserve unrelated GMGN behavior and visual hierarchy. The native favorite action and the first Buy action remain untouched.
+- Preserve unrelated GMGN behavior and visual hierarchy. The native favorite action and every Buy action remain untouched.
 - Respect the shared-wallet, GMGN-first, cached-registry, and persistent-wallet ADRs. The earlier J7-native-modal decision is superseded.
 
 ## Testing Decisions
