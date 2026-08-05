@@ -48,6 +48,21 @@ for (const surface of ["trenches", "chart"] as const) {
   });
 }
 
+test("opens an address-only Token Surface without requiring translated display text", async ({ extension }) => {
+  const page = await extension.openGmgnTokenSurface(
+    metadataFixture("chart", { sourceAddress: TOKEN_A }),
+    `https://gmgn.ai/token/bsc/${TOKEN_A}`,
+  );
+  await mockTokenIdentity(extension, TOKEN_A, "Address Only", "ADDR", "string");
+
+  await page.getByRole("button", { name: "Vamp this token" }).click();
+  const composer = page.getByRole("dialog", { name: "Launch Composer" });
+  await expect(composer).toBeVisible();
+  await expect(composer.getByLabel("Name")).toHaveValue("Address Only");
+  await expect(composer.getByLabel("Symbol")).toHaveValue("ADDR");
+  await expect(composer.getByText("GMGN translation:")).toHaveCount(0);
+});
+
 test("decodes legacy bytes32 contract identity", async ({ extension }) => {
   const page = await extension.openGmgnTokenSurface(
     metadataFixture("chart", { sourceAddress: TOKEN_A, translatedName: "Translated", translatedSymbol: "TR" }),
@@ -149,6 +164,34 @@ test("enriches only missing fields and ignores empty enrichment values", async (
   await expect(composer.getByLabel("Website")).toHaveValue("https://captured.example");
   await expect(composer.getByLabel("X")).toHaveValue("https://x.com/enriched");
   await expect(composer.getByLabel("Telegram")).toHaveValue("https://t.me/operator");
+});
+
+test("settles pending enrichment when its Token Surface root is removed", async ({ extension }) => {
+  const page = await extension.openGmgnTokenSurface(
+    metadataFixture("trenches", {
+      sourceAddress: TOKEN_A,
+      translatedName: "Bat Coin",
+      translatedSymbol: "BAT",
+      metadataPending: true,
+    }),
+    "https://gmgn.ai/?chain=bsc&tab=trenches",
+  );
+  await mockTokenIdentity(extension, TOKEN_A, "Authoritative Name", "AUTH", "string");
+  await page.getByRole("button", { name: "Vamp this token" }).click();
+  const composer = page.getByRole("dialog", { name: "Launch Composer" });
+  const staleRoot = await page.getByTestId("token-context").elementHandle();
+  if (!staleRoot) throw new Error("Expected pending Token Surface metadata root");
+
+  await staleRoot.evaluate((root) => root.remove());
+  await page.waitForTimeout(50);
+  await staleRoot.evaluate((root) => {
+    root.insertAdjacentHTML("beforeend", '<a data-token-link="x" href="https://x.com/stale">x</a>');
+    root.setAttribute("aria-busy", "false");
+  });
+
+  await page.waitForTimeout(100);
+  await expect(composer.getByLabel("X")).toHaveValue("");
+  await expect(composer).toBeVisible();
 });
 
 test("persists typed image selection for one launch draft without leaking to another", async ({ extension }) => {

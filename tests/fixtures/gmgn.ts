@@ -92,8 +92,8 @@ export const hiddenTrenchesFixture = `<!doctype html>
 
 export type SourceTokenFixture = {
   sourceAddress: string;
-  translatedName: string;
-  translatedSymbol: string;
+  translatedName?: string;
+  translatedSymbol?: string;
   imageUrl?: string;
   description?: string;
   website?: string;
@@ -107,8 +107,8 @@ export function metadataFixture(
   sourceToken: SourceTokenFixture,
 ): string {
   const tokenDetails = `<div data-testid="token-context"${sourceToken.metadataPending ? ' aria-busy="true"' : ""}>
-    <h2 data-token-translation-name>${escapeHtml(sourceToken.translatedName)}</h2>
-    <span data-token-translation-symbol>${escapeHtml(sourceToken.translatedSymbol)}</span>
+    ${sourceToken.translatedName ? `<h2 data-token-translation-name>${escapeHtml(sourceToken.translatedName)}</h2>` : ""}
+    ${sourceToken.translatedSymbol ? `<span data-token-translation-symbol>${escapeHtml(sourceToken.translatedSymbol)}</span>` : ""}
     ${sourceToken.imageUrl ? `<img data-token-primary-image src="${escapeHtml(sourceToken.imageUrl)}">` : ""}
     ${sourceToken.description ? `<p data-token-description>${escapeHtml(sourceToken.description)}</p>` : ""}
     ${tokenLink("website", sourceToken.website)}${tokenLink("x", sourceToken.x)}${tokenLink("telegram", sourceToken.telegram)}

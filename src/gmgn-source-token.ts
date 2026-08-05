@@ -8,6 +8,8 @@ import type { SourceTokenContractResolver } from "./source-token-contract-resolv
 
 const CARD_SELECTOR = '[data-testid="trenches-card"]';
 const ADDRESS_PATTERN = /^0x[0-9a-f]{40}$/i;
+const METADATA_WAIT_TIMEOUT_MS = 5_000;
+const ROUTE_CHANGE_EVENT = "vamp:locationchange";
 
 export type ResolvedSourceToken = {
   context: LaunchContext;
@@ -30,22 +32,23 @@ export function createGmgnSourceTokenAdapter(
       const sourceAddress = resolveSourceAddress(surface);
       const translatedName = readText(contextRoot, "[data-token-translation-name]")
         || readText(contextRoot, "h1, h2");
-      if (!translatedName) return undefined;
+      const hasSourceAddress = ADDRESS_PATTERN.test(sourceAddress);
+      if (!hasSourceAddress && !translatedName) return undefined;
 
       const captured = captureMetadata(contextRoot);
       const context: LaunchContext = {
         sourceAddress,
         originalName: "",
         originalSymbol: "",
-        translatedName,
+        translatedName: translatedName || undefined,
         translatedSymbol: readText(contextRoot, "[data-token-translation-symbol]") || undefined,
         ...captured,
       };
       return {
         context,
-        identity: ADDRESS_PATTERN.test(sourceAddress) ? contractResolver.resolve(sourceAddress) : undefined,
+        identity: hasSourceAddress ? contractResolver.resolve(sourceAddress) : undefined,
         enrichment: contextRoot.getAttribute("aria-busy") === "true"
-          ? waitForMetadata(contextRoot)
+          ? waitForMetadata(contextRoot, surface, sourceAddress)
           : undefined,
       };
     },
@@ -72,14 +75,47 @@ function captureMetadata(root: HTMLElement): LaunchMetadataEnrichment & { imageU
   };
 }
 
-function waitForMetadata(root: HTMLElement): Promise<LaunchMetadataEnrichment> {
+function waitForMetadata(
+  root: HTMLElement,
+  surface: HTMLElement,
+  sourceAddress: string,
+): Promise<LaunchMetadataEnrichment> {
   return new Promise((resolve) => {
-    const observer = new MutationObserver(() => {
-      if (root.getAttribute("aria-busy") === "true") return;
+    let settled = false;
+    let timeout = 0;
+
+    const settle = (metadata: LaunchMetadataEnrichment = {}) => {
+      if (settled) return;
+      settled = true;
       observer.disconnect();
-      resolve(nonEmptyMetadata(captureMetadata(root)));
+      window.clearTimeout(timeout);
+      window.removeEventListener(ROUTE_CHANGE_EVENT, checkLifecycle);
+      window.removeEventListener("popstate", checkLifecycle);
+      window.removeEventListener("hashchange", checkLifecycle);
+      resolve(metadata);
+    };
+
+    const checkLifecycle = () => {
+      if (!root.isConnected || !surface.isConnected) return settle();
+      if (sourceAddress && resolveSourceAddress(surface) !== sourceAddress) return settle();
+      if (root.getAttribute("aria-busy") !== "true") {
+        settle(nonEmptyMetadata(captureMetadata(root)));
+      }
+    };
+
+    const observer = new MutationObserver(checkLifecycle);
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["aria-busy", "data-token-address"],
+      childList: true,
+      subtree: true,
+      characterData: true,
     });
-    observer.observe(root, { attributes: true, childList: true, subtree: true, characterData: true });
+    window.addEventListener(ROUTE_CHANGE_EVENT, checkLifecycle);
+    window.addEventListener("popstate", checkLifecycle);
+    window.addEventListener("hashchange", checkLifecycle);
+    timeout = window.setTimeout(() => settle(), METADATA_WAIT_TIMEOUT_MS);
+    queueMicrotask(checkLifecycle);
   });
 }
 
