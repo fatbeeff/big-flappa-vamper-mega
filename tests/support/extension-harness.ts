@@ -1,15 +1,19 @@
 import { chromium, expect, test as base, type BrowserContext, type Page } from "@playwright/test";
+import { mkdtemp, rm } from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { trenchesFixture } from "../fixtures/gmgn";
 
 type ExtensionHarness = {
   openGmgnTokenSurface(html: string, url: string): Promise<Page>;
   openToolbarConfiguration(): Promise<Page>;
+  restartBrowser(): Promise<void>;
 };
 
 export const test = base.extend<{ extension: ExtensionHarness }>({
   extension: async ({}, use) => {
-    const context = await launchExtension();
+    const userDataDirectory = await mkdtemp(path.join(os.tmpdir(), "gmgn-vamp-"));
+    let context = await launchExtension(userDataDirectory);
 
     async function openGmgnTokenSurface(html: string, url: string): Promise<Page> {
       await context.route("https://gmgn.ai/**", (route) =>
@@ -36,14 +40,20 @@ export const test = base.extend<{ extension: ExtensionHarness }>({
       return popup;
     }
 
-    await use({ openGmgnTokenSurface, openToolbarConfiguration });
+    async function restartBrowser(): Promise<void> {
+      await context.close();
+      context = await launchExtension(userDataDirectory);
+    }
+
+    await use({ openGmgnTokenSurface, openToolbarConfiguration, restartBrowser });
     await context.close();
+    await rm(userDataDirectory, { recursive: true, force: true });
   },
 });
 
-async function launchExtension(): Promise<BrowserContext> {
+async function launchExtension(userDataDirectory: string): Promise<BrowserContext> {
   const extensionPath = path.resolve("dist");
-  return chromium.launchPersistentContext("", {
+  return chromium.launchPersistentContext(userDataDirectory, {
     channel: "chromium",
     headless: true,
     args: [

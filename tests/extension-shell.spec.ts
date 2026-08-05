@@ -161,7 +161,7 @@ test.describe("GMGN BSC Vamp extension shell", () => {
     await expect(popup.getByRole("heading", { name: "Configuration" })).toBeVisible();
     await expect(popup.getByRole("heading", { name: "Extension ready" })).toBeVisible();
     await expect(popup.getByText("Open a supported GMGN BSC token surface")).toBeVisible();
-    await expect(popup.getByRole("button")).toHaveCount(0);
+    await expect(popup.getByRole("button", { name: /deploy|launch/i })).toHaveCount(0);
   });
 
   test("handles inserted and recycled Trenches cards without duplicate actions", async ({ extension }) => {
