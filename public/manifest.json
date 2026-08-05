@@ -24,8 +24,9 @@
   "host_permissions": [
     "https://bsc-dataseed.bnbchain.org/*",
     "https://funcs.flap.sh/*",
-    "https://*/*"
+    "https://gmgn.ai/*"
   ],
+  "optional_host_permissions": ["https://*/*"],
   "content_scripts": [
     {
       "matches": ["https://gmgn.ai/*"],

@@ -2,7 +2,7 @@ import { resolveErc20Identity } from "./bsc-rpc";
 import { refreshPaymentAssetsIfStale } from "./payment-assets";
 import { ensurePaymentAssetRefreshAlarm, PAYMENT_ASSET_ALARM_NAME } from "./payment-asset-scheduler";
 import { gmgnBscTokenUrl, type FlapLaunchRequest } from "./flap-contract";
-import { checkLaunchReadiness, createProductionDependencies, launchFlapTaxToken } from "./flap-launch";
+import { checkLaunchReadiness, createProductionDependencies, launchFlapTaxToken, validatePublicHttpsImageUrl } from "./flap-launch";
 import { assertLaunchMechanicsInvariants } from "./launch-mechanics";
 
 // MV3 workers are disposable. Top-level execution happens on every worker start,
@@ -10,9 +10,20 @@ import { assertLaunchMechanicsInvariants } from "./launch-mechanics";
 void ensurePaymentAssetRefreshAlarm(chrome.alarms);
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+  if (isImagePermissionRequest(message)) {
+    try {
+      const origin = validatePublicHttpsImageUrl(message.url).origin;
+      const permission = { origins: [`${origin}/*`] };
+      void chrome.permissions.contains(permission).then((alreadyGranted) => alreadyGranted || chrome.permissions.request(permission)).then(
+        (granted) => sendResponse({ ok: granted, error: granted ? undefined : "Image-host access was not granted." }),
+        () => sendResponse({ ok: false, error: "Image-host access could not be granted." }),
+      );
+    } catch (error) { sendResponse({ ok: false, error: launchErrorMessage(error) }); }
+    return true;
+  }
   if (isReadinessRequest(message)) {
     void checkLaunchReadiness(message.launch).then(
-      () => sendResponse({ ok: true }),
+      (result) => sendResponse({ ok: true, ...result }),
       (error) => sendResponse({ ok: false, error: launchErrorMessage(error) }),
     );
     return true;
@@ -69,6 +80,12 @@ function isReadinessRequest(message: unknown): message is { type: "vamp:launch-r
     && Reflect.get(message, "type") === "vamp:launch-readiness"
     && typeof Reflect.get(message, "launch") === "object"
     && Reflect.get(message, "launch") !== null;
+}
+
+function isImagePermissionRequest(message: unknown): message is { type: "vamp:request-image-origin"; url: string } {
+  return typeof message === "object" && message !== null
+    && Reflect.get(message, "type") === "vamp:request-image-origin"
+    && typeof Reflect.get(message, "url") === "string";
 }
 
 function launchErrorMessage(error: unknown): string {

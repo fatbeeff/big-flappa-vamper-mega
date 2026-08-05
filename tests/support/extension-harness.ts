@@ -18,9 +18,16 @@ export const test = base.extend<{ extension: ExtensionHarness }>({
     let context = await launchExtension(userDataDirectory);
 
     async function openGmgnTokenSurface(html: string, url: string): Promise<Page> {
-      await context.route("https://gmgn.ai/**", (route) =>
-        route.fulfill({ status: 200, contentType: "text/html", body: html }),
-      );
+      await context.route("https://gmgn.ai/**", (route) => {
+        if (new URL(route.request().url()).pathname === "/__fixtures/vamp.png") {
+          return route.fulfill({
+            status: 200,
+            contentType: "image/png",
+            body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"),
+          });
+        }
+        return route.fulfill({ status: 200, contentType: "text/html", body: html });
+      });
       const page = await context.newPage();
       await page.goto(url);
       return page;

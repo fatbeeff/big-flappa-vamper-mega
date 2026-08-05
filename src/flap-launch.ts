@@ -3,8 +3,11 @@ import {
   createWalletClient,
   http,
   parseUnits,
+  keccak256,
+  stringToHex,
   type Address,
   type Hash,
+  type Hex,
   type PublicClient,
   type TransactionReceipt,
   type WalletClient,
@@ -30,9 +33,14 @@ import {
 } from "./flap-contract";
 import { getComposerPaymentAssets } from "./payment-assets";
 import { loadSharedDeploymentWallet } from "./shared-wallet";
+import { clearPendingFlapTransaction, persistPendingFlapTransaction, reconcilePendingFlapTransaction, type PendingTransactionStage } from "./pending-launch";
+import { gmgnBscTokenUrl } from "./flap-contract";
 
 export type LaunchPhase = "preflight" | "metadata" | "approval" | "signing" | "confirming";
 export type FlapLaunchResult = { transactionHash: Hash; tokenAddress: Address };
+export const CONSERVATIVE_LAUNCH_GAS_UNITS = 2_500_000n;
+export const CONSERVATIVE_APPROVAL_GAS_UNITS = 100_000n;
+export const MAX_TOKEN_IMAGE_BYTES = 8 * 1024 * 1024;
 
 export type FlapLaunchDependencies = {
   publicClient: PublicClient;
@@ -42,31 +50,43 @@ export type FlapLaunchDependencies = {
   paymentAssets: Awaited<ReturnType<typeof getComposerPaymentAssets>>;
   findSalt(metadataCid: string): Promise<`0x${string}`>;
   report(phase: LaunchPhase, message: string): void;
+  durableTransactions?: boolean;
 };
 
 export async function checkLaunchReadiness(
   request: FlapLaunchRequest,
   dependencies?: FlapLaunchDependencies,
-): Promise<void> {
+): Promise<{ navigationUrl?: string }> {
   assertDeployableMetadata(request.metadata);
   const deps = dependencies ?? await createProductionDependencies(request);
+  if (!dependencies) {
+    const reconciliation = await reconcilePendingFlapTransaction(deps.publicClient);
+    if (reconciliation.state === "pending") throw new Error(reconciliation.reason);
+    if (reconciliation.state === "confirmed-launch") return { navigationUrl: gmgnBscTokenUrl(reconciliation.tokenAddress) };
+  }
   const paymentAsset = resolvePaymentAsset(request.mechanics.paymentAssetId, deps.paymentAssets);
   const chainId = await deps.publicClient.getChainId();
   if (chainId !== BNB_CHAIN_ID) throw new Error(`BSC RPC returned chain ${chainId}; expected BNB Chain 56.`);
   const quoteAmount = parseUnits(request.mechanics.creatorPurchaseAmount, paymentAsset.decimals);
   const nativeBalance = await deps.publicClient.getBalance({ address: deps.account.address });
+  const gasPrice = await deps.publicClient.getGasPrice();
   if (paymentAsset.address === ZERO_ADDRESS) {
-    if (nativeBalance < quoteAmount) throw new Error("Shared Deployment Wallet has insufficient BNB for the creator purchase.");
-    return;
+    const required = quoteAmount + CONSERVATIVE_LAUNCH_GAS_UNITS * gasPrice;
+    if (nativeBalance < required) throw new Error("Shared Deployment Wallet has insufficient BNB for the creator purchase and conservative launch gas budget.");
+    return {};
   }
   const quoteConfig = await deps.publicClient.readContract({ address: FLAP_PORTAL_ADDRESS, abi: FLAP_PORTAL_ABI, functionName: "getQuoteTokenConfiguration", args: [paymentAsset.address] });
   if (quoteConfig.enabled !== 1) throw new Error(`${paymentAsset.symbol} is not currently enabled by the Flap Portal.`);
+  let approvalStages = 0n;
   if (quoteAmount > 0n) {
     const quoteBalance = await deps.publicClient.readContract({ address: paymentAsset.address, abi: ERC20_ABI, functionName: "balanceOf", args: [deps.account.address] });
     if (quoteBalance < quoteAmount) throw new Error(`Shared Deployment Wallet has insufficient ${paymentAsset.symbol}.`);
-    await deps.publicClient.readContract({ address: paymentAsset.address, abi: ERC20_ABI, functionName: "allowance", args: [deps.account.address, FLAP_PORTAL_ADDRESS] });
+    const allowance = await deps.publicClient.readContract({ address: paymentAsset.address, abi: ERC20_ABI, functionName: "allowance", args: [deps.account.address, FLAP_PORTAL_ADDRESS] });
+    if (allowance < quoteAmount) approvalStages = allowance > 0n ? 2n : 1n;
   }
-  if (nativeBalance < ERC20_QUOTE_NATIVE_FEE) throw new Error("Shared Deployment Wallet needs BNB for the ERC-20 launch value and gas.");
+  const requiredNative = ERC20_QUOTE_NATIVE_FEE + (CONSERVATIVE_LAUNCH_GAS_UNITS + approvalStages * CONSERVATIVE_APPROVAL_GAS_UNITS) * gasPrice;
+  if (nativeBalance < requiredNative) throw new Error("Shared Deployment Wallet has insufficient BNB for the ERC-20 launch value and conservative launch/approval gas budget.");
+  return {};
 }
 
 export async function launchFlapTaxToken(
@@ -75,6 +95,12 @@ export async function launchFlapTaxToken(
 ): Promise<FlapLaunchResult> {
   assertDeployableMetadata(request.metadata);
   const deps = dependencies ?? await createProductionDependencies(request);
+  const durable = !dependencies || dependencies.durableTransactions === true;
+  if (durable) {
+    const reconciliation = await reconcilePendingFlapTransaction(deps.publicClient);
+    if (reconciliation.state === "pending") throw new Error(reconciliation.reason);
+    if (reconciliation.state === "confirmed-launch") return { transactionHash: reconciliation.pending.hash, tokenAddress: reconciliation.tokenAddress };
+  }
   const paymentAsset = resolvePaymentAsset(request.mechanics.paymentAssetId, deps.paymentAssets);
   const account = deps.account;
   deps.report("preflight", "Checking wallet, balance, payment asset, and Flap contractâ€¦");
@@ -115,6 +141,7 @@ export async function launchFlapTaxToken(
     salt,
     beneficiary: account.address,
   });
+  const draftFingerprint = fingerprintDraft(request);
 
   if (paymentAsset.address !== ZERO_ADDRESS && quoteAmount > 0n) {
     const allowance = await deps.publicClient.readContract({
@@ -133,9 +160,15 @@ export async function launchFlapTaxToken(
           functionName: "approve",
           args: [FLAP_PORTAL_ADDRESS, 0n],
         });
-        const resetHash = await deps.walletClient.writeContract(reset.request);
+        const resetNonce = await deps.publicClient.getTransactionCount({ address: account.address, blockTag: "pending" });
+        const resetHash = await writeWithNonceGuard(deps, { ...reset.request, nonce: resetNonce });
+        if (durable) await persistPendingFlapTransaction(pendingRecord("approval-reset", resetHash, resetNonce, account.address, draftFingerprint, metadataCid));
         const resetReceipt = await waitForReceipt(deps.publicClient, resetHash, "Payment-token allowance reset");
-        if (resetReceipt.status !== "success") throw new Error("Payment-token allowance reset reverted.");
+        if (resetReceipt.status !== "success") {
+          if (durable) await clearPendingFlapTransaction(resetHash);
+          throw new Error("Payment-token allowance reset reverted.");
+        }
+        if (durable) await clearPendingFlapTransaction(resetHash);
       }
       const approval = await deps.publicClient.simulateContract({
         account,
@@ -144,9 +177,15 @@ export async function launchFlapTaxToken(
         functionName: "approve",
         args: [FLAP_PORTAL_ADDRESS, quoteAmount],
       });
-      const approvalHash = await deps.walletClient.writeContract(approval.request);
+      const approvalNonce = await deps.publicClient.getTransactionCount({ address: account.address, blockTag: "pending" });
+      const approvalHash = await writeWithNonceGuard(deps, { ...approval.request, nonce: approvalNonce });
+      if (durable) await persistPendingFlapTransaction(pendingRecord("approval", approvalHash, approvalNonce, account.address, draftFingerprint, metadataCid));
       const approvalReceipt = await waitForReceipt(deps.publicClient, approvalHash, "Payment-token approval");
-      if (approvalReceipt.status !== "success") throw new Error("Payment-token approval reverted.");
+      if (approvalReceipt.status !== "success") {
+        if (durable) await clearPendingFlapTransaction(approvalHash);
+        throw new Error("Payment-token approval reverted.");
+      }
+      if (durable) await clearPendingFlapTransaction(approvalHash);
     }
   }
 
@@ -166,11 +205,18 @@ export async function launchFlapTaxToken(
   if (launchNativeBalance < value + gas * gasPrice) throw new Error("Shared Deployment Wallet has insufficient BNB for launch value and gas.");
 
   deps.report("signing", "Signing and broadcasting the Flap launchâ€¦");
-  const transactionHash = await deps.walletClient.writeContract(simulation.request);
+  const launchNonce = await deps.publicClient.getTransactionCount({ address: account.address, blockTag: "pending" });
+  const transactionHash = await writeWithNonceGuard(deps, { ...simulation.request, nonce: launchNonce });
+  if (durable) await persistPendingFlapTransaction(pendingRecord("launch", transactionHash, launchNonce, account.address, draftFingerprint, metadataCid));
   deps.report("confirming", "Broadcast. Waiting for the first successful receiptâ€¦");
   const receipt = await waitForReceipt(deps.publicClient, transactionHash, "Flap launch");
-  if (receipt.status !== "success") throw new Error("Flap launch reverted. Your edits are preserved; correct the issue and retry.");
-  return { transactionHash, tokenAddress: tokenAddressFromReceipt(receipt) };
+  if (receipt.status !== "success") {
+    if (durable) await clearPendingFlapTransaction(transactionHash);
+    throw new Error("Flap launch reverted. Your edits are preserved; correct the issue and retry.");
+  }
+  const tokenAddress = tokenAddressFromReceipt(receipt);
+  if (durable) await clearPendingFlapTransaction(transactionHash);
+  return { transactionHash, tokenAddress };
 }
 
 export async function createProductionDependencies(
@@ -190,6 +236,7 @@ export async function createProductionDependencies(
     uploadMetadata: () => uploadFlapMetadata(request),
     findSalt: findTaxTokenSalt,
     report,
+    durableTransactions: true,
   };
 }
 
@@ -229,13 +276,74 @@ async function imageFile(request: FlapLaunchRequest, requestFetch: typeof fetch)
   const source = request.imageSource;
   if (source.kind === "none") throw new Error("A token image is required by Flap.");
   if (source.kind === "uploaded-file") {
+    if (!source.mediaType.toLowerCase().startsWith("image/")) throw new Error("Uploaded token media must be an image.");
+    const estimatedBytes = Math.floor((source.dataUrl.length - source.dataUrl.indexOf(",") - 1) * 0.75);
+    if (estimatedBytes > MAX_TOKEN_IMAGE_BYTES) throw new Error("Token image exceeds the 8 MB limit.");
     const response = await requestFetch(source.dataUrl);
-    return new File([await response.blob()], safeFilename(source.name), { type: source.mediaType || "application/octet-stream" });
+    const blob = await boundedImageBlob(response);
+    return new File([blob], safeFilename(source.name), { type: source.mediaType });
   }
-  const response = await requestFetch(source.url, { credentials: "omit", cache: "no-store" });
+  validatePublicHttpsImageUrl(source.url);
+  const response = await requestFetch(source.url, { credentials: "omit", cache: "no-store", redirect: "follow" });
   if (!response.ok) throw new Error(`Token image could not be fetched (HTTP ${response.status}).`);
-  const blob = await response.blob();
+  validatePublicHttpsImageUrl(response.url || source.url);
+  const blob = await boundedImageBlob(response);
   return new File([blob], filenameFromUrl(source.url, blob.type), { type: blob.type || "application/octet-stream" });
+}
+
+export function validatePublicHttpsImageUrl(value: string): URL {
+  let url: URL;
+  try { url = new URL(value); }
+  catch { throw new Error("Token image URL is invalid."); }
+  if (url.protocol !== "https:" || url.username || url.password || (url.port && url.port !== "443")) throw new Error("Token image URL must be public HTTPS without credentials or a custom port.");
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "localhost" || host.endsWith(".localhost") || host.endsWith(".local") || isPrivateIpv4(host) || isPrivateIpv6(host)) {
+    throw new Error("Token image URL cannot target localhost or a private/link-local address.");
+  }
+  return url;
+}
+
+async function boundedImageBlob(response: Response): Promise<Blob> {
+  const type = (response.headers.get("content-type") ?? "").split(";", 1)[0].trim().toLowerCase();
+  if (!type.startsWith("image/")) throw new Error("Token image response must use an image MIME type.");
+  const declared = Number(response.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > MAX_TOKEN_IMAGE_BYTES) throw new Error("Token image exceeds the 8 MB limit.");
+  if (!response.body) {
+    const blob = await response.blob();
+    if (blob.size > MAX_TOKEN_IMAGE_BYTES) throw new Error("Token image exceeds the 8 MB limit.");
+    return blob;
+  }
+  const reader = response.body.getReader();
+  const chunks: BlobPart[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > MAX_TOKEN_IMAGE_BYTES) throw new Error("Token image exceeds the 8 MB limit.");
+      chunks.push(value.slice().buffer as ArrayBuffer);
+    }
+  } finally { reader.releaseLock(); }
+  return new Blob(chunks, { type });
+}
+
+function isPrivateIpv4(host: string): boolean {
+  if (!/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return false;
+  const octets = host.split(".").map(Number);
+  if (octets.some((part) => part > 255)) return true;
+  const [a, b] = octets;
+  return a === 0 || a === 10 || a === 127 || a >= 224
+    || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254)
+    || (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168)
+    || (a === 198 && (b === 18 || b === 19));
+}
+function isPrivateIpv6(host: string): boolean {
+  const normalized = host.toLowerCase();
+  if (!normalized.includes(":")) return false;
+  if (normalized === "::" || normalized === "::1" || normalized.startsWith("fe8") || normalized.startsWith("fe9") || normalized.startsWith("fea") || normalized.startsWith("feb") || normalized.startsWith("fc") || normalized.startsWith("fd")) return true;
+  const mapped = normalized.match(/::ffff:(\d+\.\d+\.\d+\.\d+)$/)?.[1];
+  return mapped ? isPrivateIpv4(mapped) : false;
 }
 
 async function waitForReceipt(publicClient: PublicClient, hash: Hash, label: string): Promise<TransactionReceipt> {
@@ -247,6 +355,26 @@ async function waitForReceipt(publicClient: PublicClient, hash: Hash, label: str
     }
     throw error;
   }
+}
+
+async function writeWithNonceGuard(deps: FlapLaunchDependencies, request: any): Promise<Hash> {
+  try { return await deps.walletClient.writeContract(request); }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (/nonce too low|replacement transaction|already known|known transaction/i.test(message)) {
+      const latest = await deps.publicClient.getTransactionCount({ address: deps.account.address, blockTag: "latest" }).catch(() => undefined);
+      throw new Error(`Nonce conflict while broadcasting${latest === undefined ? "" : ` (latest nonce ${latest})`}. No replacement was sent; reconcile the shared wallet before retrying.`);
+    }
+    throw error;
+  }
+}
+
+function pendingRecord(stage: PendingTransactionStage, hash: Hash, nonce: number, wallet: Address, draftFingerprint: Hex, metadataCid: string) {
+  return { version: 1 as const, stage, hash, nonce, wallet, draftFingerprint, metadataCid, timestamp: new Date().toISOString() };
+}
+
+function fingerprintDraft(request: FlapLaunchRequest): Hex {
+  return keccak256(stringToHex(JSON.stringify(request)));
 }
 
 function nullable(value: string): string | null { return value.trim() || null; }

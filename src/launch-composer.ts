@@ -275,7 +275,7 @@ export function createLaunchComposer(): LaunchComposer {
       imageSource: { ...draft.imageSource },
       mechanics: structuredClone(draft.mechanics),
     };
-    chrome.runtime.sendMessage({ type: "vamp:launch-token", requestId: launchRequestId, launch }, (response: unknown) => {
+    const broadcast = (): void => chrome.runtime.sendMessage({ type: "vamp:launch-token", requestId: launchRequestId, launch }, (response: unknown) => {
       launchInFlight = false;
       closeButton.disabled = false;
       const runtimeError = chrome.runtime.lastError;
@@ -295,6 +295,24 @@ export function createLaunchComposer(): LaunchComposer {
       launchStatus.classList.add("error");
       deployButton.disabled = false;
     });
+    if (launch.imageSource.kind === "remote-url") {
+      launchStatus.textContent = "Requesting access to the public image hostâ€¦";
+      chrome.runtime.sendMessage({ type: "vamp:request-image-origin", url: launch.imageSource.url }, (response: unknown) => {
+        const runtimeError = chrome.runtime.lastError;
+        if (!runtimeError && typeof response === "object" && response !== null && Reflect.get(response, "ok") === true) {
+          broadcast();
+          return;
+        }
+        launchInFlight = false;
+        closeButton.disabled = false;
+        deployButton.disabled = false;
+        const error = runtimeError?.message ?? (typeof response === "object" && response !== null ? Reflect.get(response, "error") : undefined);
+        launchStatus.textContent = typeof error === "string" ? error : "Image-host access is required before Deploy.";
+        launchStatus.classList.add("error");
+      });
+      return;
+    }
+    broadcast();
   });
 
   return {
@@ -412,6 +430,12 @@ export function createLaunchComposer(): LaunchComposer {
         const runtimeError = chrome.runtime.lastError;
         const ok = !runtimeError && typeof response === "object" && response !== null && Reflect.get(response, "ok") === true;
         if (ok) {
+          const navigationUrl = Reflect.get(response as object, "navigationUrl");
+          if (typeof navigationUrl === "string") {
+            launchStatus.textContent = "Confirmed launch found. Returning to GMGNâ€¦";
+            window.location.assign(navigationUrl);
+            return;
+          }
           deployButton.disabled = false;
           launchStatus.textContent = "Ready to sign and broadcast with the Shared Deployment Wallet.";
           return;

@@ -103,6 +103,66 @@ test("persists metadata, broadcasts once, derives the receipt token, and navigat
   expect(sentTransactions).toBe(1);
 });
 
+test("keeps Deploy disabled when the shared wallet cannot cover conservative launch gas", async ({ extension }) => {
+  await extension.mockBscRpc(async (route) => {
+    const body = route.request().postDataJSON() as { id: number; method: string; params?: unknown[] };
+    const result = body.method === "eth_getBalance" ? "0x1" : rpcResult(body.method, {
+      created: TOKEN, transactionHash: `0x${"41".repeat(32)}`, blockHash: `0x${"42".repeat(32)}`,
+      owner: "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf",
+    }, body.params);
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ jsonrpc: "2.0", id: body.id, result }) });
+  });
+  const popup = await extension.openToolbarConfiguration();
+  await popup.getByLabel("Private key").fill(PRIVATE_KEY);
+  await popup.getByRole("button", { name: "Import wallet" }).click();
+  await popup.close();
+  const page = await extension.openGmgnTokenSurface(metadataFixture("trenches", {
+    sourceAddress: TOKEN, translatedName: "Vamp", translatedSymbol: "VAMP", imageUrl: "https://gmgn.ai/__fixtures/vamp.png",
+  }), "https://gmgn.ai/?chain=bsc&tab=trenches");
+  await page.getByRole("button", { name: "Vamp this token" }).click();
+  const composer = page.locator("[data-vamp-launch-composer]");
+  await composer.getByLabel("Name").fill("Vamp");
+  await composer.getByLabel("Symbol").fill("VAMP");
+  await expect(composer.locator(".launch-status")).toContainText(/insufficient BNB.*conservative launch gas/i);
+  await expect(composer.getByRole("button", { name: "Deploy" })).toBeDisabled();
+});
+
+test("restores a timed-out pending launch after browser restart and blocks duplicate deploy", async ({ extension }) => {
+  const popup = await extension.openToolbarConfiguration();
+  await popup.evaluate(async ({ key, hash, wallet, privateKey }) => {
+    await chrome.storage.local.set({ sharedDeploymentWalletV1: { version: 1, privateKey }, [key]: {
+      version: 1, stage: "launch", hash, nonce: 7, wallet, draftFingerprint: hash,
+      metadataCid: "bafy-timeout", timestamp: new Date().toISOString(),
+    } });
+  }, {
+    key: "pendingFlapTransactionV1", hash: `0x${"51".repeat(32)}`,
+    wallet: "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf",
+    privateKey: PRIVATE_KEY,
+  });
+  await popup.close();
+  await extension.restartBrowser();
+  await extension.mockBscRpc(async (route) => {
+    const body = route.request().postDataJSON() as { id: number; method: string; params?: unknown[] };
+    const result = body.method === "eth_getTransactionReceipt" || body.method === "eth_getTransactionByHash"
+      ? null
+      : body.method === "eth_getTransactionCount" ? "0x7"
+      : rpcResult(body.method, {
+        created: TOKEN, transactionHash: `0x${"51".repeat(32)}`, blockHash: `0x${"52".repeat(32)}`,
+        owner: "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf",
+      }, body.params);
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ jsonrpc: "2.0", id: body.id, result }) });
+  });
+  const page = await extension.openGmgnTokenSurface(metadataFixture("trenches", {
+    sourceAddress: TOKEN, translatedName: "Vamp", translatedSymbol: "VAMP", imageUrl: "https://gmgn.ai/__fixtures/vamp.png",
+  }), "https://gmgn.ai/?chain=bsc&tab=trenches");
+  await page.getByRole("button", { name: "Vamp this token" }).click();
+  const composer = page.locator("[data-vamp-launch-composer]");
+  await composer.getByLabel("Name").fill("Vamp");
+  await composer.getByLabel("Symbol").fill("VAMP");
+  await expect(composer.locator(".launch-status")).toContainText(/retry remains blocked|not yet visible/i);
+  await expect(composer.getByRole("button", { name: "Deploy" })).toBeDisabled();
+});
+
 function rpcResult(method: string, values: { created: string; transactionHash: string; blockHash: string; owner: string }, params: unknown[] = []): unknown {
   const zero32 = `0x${"00".repeat(32)}`;
   if (method === "eth_chainId") return "0x38";

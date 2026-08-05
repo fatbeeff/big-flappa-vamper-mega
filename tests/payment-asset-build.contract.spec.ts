@@ -16,9 +16,10 @@ test("build emits the configured HTTPS registry and only its exact host permissi
     expect(JSON.parse(await readFile("dist/manifest.json", "utf8")).host_permissions).toEqual([
       "https://bsc-dataseed.bnbchain.org/*",
       "https://funcs.flap.sh/*",
-      "https://*/*",
+      "https://gmgn.ai/*",
       "https://registry.mock.example/*",
     ]);
+    expect(JSON.parse(await readFile("dist/manifest.json", "utf8")).optional_host_permissions).toEqual(["https://*/*"]);
   } finally {
     await execFileAsync(process.execPath, ["scripts/build.mjs"], { cwd: process.cwd(), env: { ...process.env, VAMP_PAYMENT_ASSET_REGISTRY_URL: "" } });
   }

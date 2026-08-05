@@ -144,6 +144,7 @@ test("preflights, exact-approves with zero reset, broadcasts once, and waits for
     report: (_phase: string, message: string) => reports.push(message),
     publicClient: {
       getChainId: async () => 56,
+      getTransactionCount: async () => receiptIndex,
       getBalance: async () => 10n ** 18n,
       readContract: async ({ functionName }: { functionName: string }) => ({ getQuoteTokenConfiguration: { enabled: 1 }, balanceOf: 2n * 10n ** 18n, allowance: 1n }[functionName]),
       simulateContract: async (input: unknown) => ({ request: input }),

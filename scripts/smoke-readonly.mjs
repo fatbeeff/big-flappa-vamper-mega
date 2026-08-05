@@ -3,6 +3,7 @@ import { decodeFunctionResult, encodeFunctionData, parseAbi } from "viem";
 
 const rpcUrl = process.env.VAMP_BSC_RPC_URL || "https://bsc-dataseed.bnbchain.org/";
 const portal = "0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0";
+const taxTokenV3Implementation = "0x024f18294970B5c76c0691b87f138A0317156422";
 const abi = parseAbi([
   "function version() view returns (string)",
   "function nonce() view returns (uint256)",
@@ -24,6 +25,7 @@ async function call(address, functionName, args = []) {
 
 if (await rpc("eth_chainId") !== "0x38") throw new Error("RPC is not BNB Chain mainnet (56).");
 if ((await rpc("eth_getCode", [portal, "latest"])) === "0x") throw new Error("Flap Portal has no deployed code.");
+if ((await rpc("eth_getCode", [taxTokenV3Implementation, "latest"])) === "0x") throw new Error("Flap Tax Token V3 implementation has no deployed code.");
 const version = await call(portal, "version");
 const nonce = await call(portal, "nonce");
 const manifest = JSON.parse(await readFile(new URL("../registry/payment-assets.json", import.meta.url), "utf8"));
