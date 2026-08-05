@@ -12,6 +12,7 @@ const paymentAsset = required<HTMLSelectElement>("#payment-asset");
 let state: TemplateState;
 let editingId: string | undefined;
 let cachedAssets: readonly PaymentAsset[] = BUNDLED_PAYMENT_ASSETS;
+let walletBalanceGeneration = 0;
 
 if (version) version.textContent = chrome.runtime.getManifest().version;
 void initialize();
@@ -52,6 +53,7 @@ async function initializeWallet(): Promise<void> {
 
 async function saveWallet(event: SubmitEvent): Promise<void> {
   event.preventDefault();
+  walletBalanceGeneration += 1;
   const input = required<HTMLInputElement>("#wallet-private-key");
   const candidate = input.value;
   input.value = "";
@@ -62,6 +64,7 @@ async function saveWallet(event: SubmitEvent): Promise<void> {
     await refreshWalletBalance(wallet);
   } catch (error) {
     announceWallet(error instanceof Error ? `Wallet not saved: ${error.message}` : "Wallet not saved: invalid private key.", true);
+    await refreshWalletBalance();
   }
 }
 
@@ -80,7 +83,9 @@ function renderConfiguredWallet(wallet: SharedDeploymentWallet): void {
 }
 
 async function refreshWalletBalance(wallet?: SharedDeploymentWallet): Promise<void> {
+  const generation = ++walletBalanceGeneration;
   const current = wallet ?? await loadSharedDeploymentWallet();
+  if (generation !== walletBalanceGeneration) return;
   if (!current) {
     renderMissingWallet();
     return;
@@ -98,14 +103,16 @@ async function refreshWalletBalance(wallet?: SharedDeploymentWallet): Promise<vo
   }
   try {
     const balance = await getBnbBalance(current.address);
+    if (generation !== walletBalanceGeneration) return;
     required<HTMLOutputElement>("#wallet-balance").textContent = formatBnbBalance(balance);
     setWalletConnection("Connected");
   } catch {
+    if (generation !== walletBalanceGeneration) return;
     required<HTMLOutputElement>("#wallet-balance").textContent = "Unavailable";
     setWalletConnection("BSC RPC unavailable");
     announceWallet("Balance unavailable: BSC RPC request failed. Try again.", true);
   } finally {
-    button.disabled = false;
+    if (generation === walletBalanceGeneration) button.disabled = false;
   }
 }
 

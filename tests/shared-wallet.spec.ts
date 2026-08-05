@@ -79,4 +79,40 @@ test.describe("Shared Deployment Wallet configuration", () => {
     await expect(popup.getByRole("alert")).toContainText("browser is offline");
     await extension.setNetworkOffline(false);
   });
+
+  test("ignores a stale balance response after the wallet is replaced", async ({ extension }) => {
+    let releaseFirstBalance!: () => void;
+    let markFirstBalanceStarted!: () => void;
+    const firstBalanceStarted = new Promise<void>((resolve) => { markFirstBalanceStarted = resolve; });
+    const firstBalanceRelease = new Promise<void>((resolve) => { releaseFirstBalance = resolve; });
+
+    await extension.mockBscRpc(async (route) => {
+      const body = route.request().postDataJSON() as { params: [string, string] };
+      if (body.params[0] === FIRST_ADDRESS) {
+        markFirstBalanceStarted();
+        await firstBalanceRelease;
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0x7ce66c50e2840000" }) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0x1bc16d674ec80000" }) });
+    });
+
+    const popup = await extension.openToolbarConfiguration();
+    await popup.getByLabel("Private key").fill(FIRST_PRIVATE_KEY);
+    await popup.getByRole("button", { name: "Import wallet" }).click();
+    await firstBalanceStarted;
+
+    await popup.getByLabel("Private key").fill(SECOND_PRIVATE_KEY);
+    await popup.getByRole("button", { name: "Replace wallet" }).click();
+    await expect(popup.getByText(SECOND_ADDRESS, { exact: true })).toBeVisible();
+    await expect(popup.getByText("2 BNB", { exact: true })).toBeVisible();
+    await expect(popup.getByText("Connected", { exact: true })).toHaveCount(2);
+
+    releaseFirstBalance();
+    await popup.waitForTimeout(100);
+    await expect(popup.getByText(SECOND_ADDRESS, { exact: true })).toBeVisible();
+    await expect(popup.getByText("2 BNB", { exact: true })).toBeVisible();
+    await expect(popup.getByText("Connected", { exact: true })).toHaveCount(2);
+    await expect(popup.getByRole("button", { name: "Refresh balance" })).toBeEnabled();
+  });
 });
