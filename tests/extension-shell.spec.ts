@@ -2,23 +2,31 @@ import { expect, test } from "./support/extension-harness";
 import {
   chartFixture,
   hiddenTrenchesFixture,
-  interleavedTrenchesFixture,
   nonBscFixture,
+  statefulChartFixture,
   trenchesFixture,
 } from "./fixtures/gmgn";
 
 test.describe("GMGN BSC Vamp extension shell", () => {
-  test("replaces the second Trenches Buy action and opens the Launch Composer", async ({ extension }) => {
+  test("adds one Vamp Action to the Trenches left hover rail and opens the Launch Composer", async ({ extension }) => {
     const page = await extension.openGmgnTokenSurface(trenchesFixture, "https://gmgn.ai/?chain=bsc&tab=trenches");
 
     const card = page.getByTestId("trenches-card");
-    const initialActionsSize = await page.locator("body").evaluate((body) => ({
-      width: Number(body.dataset.initialActionsWidth),
-      height: Number(body.dataset.initialActionsHeight),
+    const initialCardSize = await page.locator("body").evaluate((body) => ({
+      width: Number(body.dataset.initialCardWidth),
+      height: Number(body.dataset.initialCardHeight),
     }));
-    await expect(card.getByRole("button", { name: "Buy" })).toHaveCount(1);
-    const vamp = card.getByRole("button", { name: "Vamp this token" });
+    const buyActions = card.getByRole("button", { name: "Buy" });
+    await expect(buyActions).toHaveCount(2);
+    await expect(buyActions.nth(0)).toHaveAttribute("data-native-buy", "first");
+    await expect(buyActions.nth(1)).toHaveAttribute("data-native-buy", "second");
+    await buyActions.nth(0).click();
+    await buyActions.nth(1).click();
+    expect(await page.evaluate(() => Reflect.get(window, "buyInvocations"))).toEqual(["first", "second"]);
+    const leftRail = card.getByTestId("card-left-hover-rail");
+    const vamp = leftRail.getByRole("button", { name: "Vamp this token" });
     await expect(vamp).toHaveCount(1);
+    await expect(leftRail.getByRole("button", { name: "Pin token" })).toBeVisible();
     await expect
       .poll(() =>
         vamp.locator("img").evaluate((image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0),
@@ -31,11 +39,11 @@ test.describe("GMGN BSC Vamp extension shell", () => {
     await page.mouse.move(0, 0);
     await expect(tooltip).toBeHidden();
     expect(
-      await card.getByTestId("card-hover-actions").evaluate((actions) => ({
-        width: actions.getBoundingClientRect().width,
-        height: actions.getBoundingClientRect().height,
+      await card.evaluate((element) => ({
+        width: element.getBoundingClientRect().width,
+        height: element.getBoundingClientRect().height,
       })),
-    ).toEqual(initialActionsSize);
+    ).toEqual(initialCardSize);
 
     await vamp.focus();
     await expect(tooltip).toBeVisible();
@@ -70,6 +78,38 @@ test.describe("GMGN BSC Vamp extension shell", () => {
     await expect(vamp).toBeFocused();
   });
 
+  test("keeps chart Favorite state and behavior isolated from the Vamp Action", async ({ extension }) => {
+    const page = await extension.openGmgnTokenSurface(statefulChartFixture, "https://gmgn.ai/token/bsc/0x111");
+    const rail = page.getByTestId("chart-action-rail");
+    const favorite = rail.getByRole("button", { name: "Favorite" });
+    const vamp = rail.getByRole("button", { name: "Vamp this token" });
+
+    await expect(favorite).toBeDisabled();
+    await expect(favorite).toHaveAttribute("aria-pressed", "true");
+    await expect(favorite).toHaveAttribute("data-gmgn-action", "favorite");
+    await expect(favorite).toHaveAttribute("onclick", "window.favoriteInvocations += 1");
+    await expect(vamp).toBeEnabled();
+    await expect(vamp).not.toHaveAttribute("aria-pressed");
+    await expect(vamp).not.toHaveAttribute("data-gmgn-action");
+    await expect(vamp).not.toHaveAttribute("onclick");
+    await expect(vamp).toHaveClass("gmgn-chart-action");
+    expect(await vamp.evaluate((button) => ({
+      width: button.getBoundingClientRect().width,
+      height: button.getBoundingClientRect().height,
+    }))).toEqual(await favorite.evaluate((button) => ({
+      width: button.getBoundingClientRect().width,
+      height: button.getBoundingClientRect().height,
+    })));
+
+    await vamp.focus();
+    await expect(vamp).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("dialog", { name: "Launch Composer" })).toBeVisible();
+    expect(await page.evaluate(() => Number(Reflect.get(window, "favoriteInvocations")))).toBe(0);
+    await expect(favorite).toBeDisabled();
+    await expect(favorite).toHaveAttribute("aria-pressed", "true");
+  });
+
   test("does not inject on non-BSC surfaces", async ({ extension }) => {
     const page = await extension.openGmgnTokenSurface(nonBscFixture, "https://gmgn.ai/?chain=sol&tab=trenches");
     await expect(page.getByRole("button", { name: "Vamp this token" })).toHaveCount(0);
@@ -93,32 +133,23 @@ test.describe("GMGN BSC Vamp extension shell", () => {
 
     await page.evaluate(() => history.replaceState({}, "", "/?chain=bsc&tab=trenches"));
     await expect(page.getByRole("button", { name: "Vamp this token" })).toHaveCount(1);
-    await expect(page.getByRole("button", { name: "Buy" })).toHaveCount(1);
-  });
-
-  test("replaces the second semantic Buy action when controls are interleaved", async ({ extension }) => {
-    const page = await extension.openGmgnTokenSurface(interleavedTrenchesFixture, "https://gmgn.ai/?chain=bsc&tab=trenches");
-
-    const actions = page.getByTestId("card-hover-actions");
-    await expect(actions.getByRole("button", { name: "Buy" })).toHaveCount(1);
-    await expect(actions.getByRole("button", { name: "Favorite" })).toBeVisible();
-    await expect(actions.getByRole("button", { name: "Vamp this token" })).toHaveCount(1);
-    expect(await actions.getByRole("button", { name: "Favorite" }).evaluate((button) => button.nextElementSibling?.getAttribute("aria-label"))).toBe("Vamp this token");
+    await expect(page.getByRole("button", { name: "Buy" })).toHaveCount(2);
   });
 
   test("preserves hidden hover-control geometry when the action becomes visible", async ({ extension }) => {
     const page = await extension.openGmgnTokenSurface(hiddenTrenchesFixture, "https://gmgn.ai/?chain=bsc&tab=trenches");
     const card = page.getByTestId("trenches-card");
-    const actions = card.getByTestId("card-hover-actions");
-    await expect(actions).toBeHidden();
+    const leftRail = card.getByTestId("card-left-hover-rail");
+    await expect(leftRail).toBeHidden();
 
     const initialSize = await page.locator("body").evaluate((body) => ({
-      width: Number(body.dataset.initialActionsWidth),
-      height: Number(body.dataset.initialActionsHeight),
+      width: Number(body.dataset.initialCardWidth),
+      height: Number(body.dataset.initialCardHeight),
     }));
     await card.hover();
-    await expect(card.getByRole("button", { name: "Vamp this token" })).toBeVisible();
-    expect(await actions.evaluate((element) => ({
+    await expect(leftRail.getByRole("button", { name: "Vamp this token" })).toBeVisible();
+    await expect(card.getByRole("button", { name: "Buy" })).toHaveCount(2);
+    expect(await card.evaluate((element) => ({
       width: element.getBoundingClientRect().width,
       height: element.getBoundingClientRect().height,
     }))).toEqual(initialSize);
@@ -144,14 +175,15 @@ test.describe("GMGN BSC Vamp extension shell", () => {
       const card = document.createElement("article");
       card.dataset.testid = "trenches-card";
       card.dataset.tokenAddress = "0x222";
-      card.innerHTML = `<h2>Wolf Coin</h2><div data-testid="card-hover-actions"><button>Buy</button><button>Buy</button></div>`;
+      card.innerHTML = `<h2>Wolf Coin</h2><div data-testid="token-image">🐺</div><div data-testid="card-left-hover-rail"><button aria-label="Pin token">⌖</button></div><div data-testid="card-hover-actions"><button>Buy</button><button>Buy</button></div>`;
       list.append(card);
     });
     await expect(page.getByRole("button", { name: "Vamp this token" })).toHaveCount(2);
+    await expect(page.getByRole("button", { name: "Buy" })).toHaveCount(4);
 
     await page.getByTestId("trenches-card").nth(1).evaluate((card) => {
       card.setAttribute("data-token-address", "0x333");
-      card.querySelector('[data-testid="card-hover-actions"]')?.append(document.createElement("span"));
+      card.querySelector('[data-testid="card-left-hover-rail"]')?.append(document.createElement("span"));
     });
     await expect(page.getByTestId("trenches-card").nth(1).getByRole("button", { name: "Vamp this token" })).toHaveCount(1);
     expect(gmgnRequests).toEqual([]);

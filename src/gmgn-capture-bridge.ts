@@ -3,20 +3,12 @@ import type { LaunchComposer } from "./launch-composer";
 const ACTION_NAME = "Vamp this token";
 const ACTION_SELECTOR = '[data-vamp-action="true"]';
 const CARD_SELECTOR = '[data-testid="trenches-card"]';
-const CARD_ACTIONS_SELECTOR = '[data-testid="card-hover-actions"]';
+const CARD_LEFT_RAIL_SELECTOR = '[data-testid="card-left-hover-rail"]';
 const CHART_RAIL_SELECTOR = '[data-testid="chart-action-rail"]';
 const ROUTE_CHANGE_EVENT = "vamp:locationchange";
 
-type NativeActionState = {
-  nodes: Node[];
-  ariaLabel: string | null;
-  title: string | null;
-  style: string | null;
-};
-
 export function installGmgnCaptureBridge(launchComposer: LaunchComposer): void {
   let tokenSurfaceRefreshScheduled = false;
-  const replacedNativeActions = new Map<HTMLButtonElement, NativeActionState>();
   const actionCleanup = new WeakMap<HTMLButtonElement, () => void>();
   const tooltip = createTooltip();
 
@@ -53,19 +45,13 @@ export function installGmgnCaptureBridge(launchComposer: LaunchComposer): void {
   }
 
   function configureVampAction(button: HTMLButtonElement): void {
-    const originalNodes = Array.from(button.childNodes);
-    const placeholder = document.createElement("span");
-    placeholder.dataset.vampGeometryPlaceholder = "true";
-    placeholder.style.cssText = "visibility:hidden;display:inline-flex;align-items:center";
-    placeholder.append(...originalNodes);
-
     if (getComputedStyle(button).position === "static") button.style.position = "relative";
     button.type = "button";
     button.dataset.vampAction = "true";
     button.setAttribute("aria-label", ACTION_NAME);
     button.setAttribute("aria-describedby", tooltip.id);
     button.removeAttribute("title");
-    button.replaceChildren(placeholder, createVampIcon());
+    button.replaceChildren(createVampIcon());
 
     const openLaunchComposer = () => {
       hideTooltip();
@@ -86,27 +72,27 @@ export function installGmgnCaptureBridge(launchComposer: LaunchComposer): void {
     });
   }
 
-  function actionName(button: HTMLButtonElement): string {
-    return (button.getAttribute("aria-label") ?? button.textContent ?? "").trim().replace(/\s+/g, " ");
+  function createPresentationMatchedButton(reference: HTMLButtonElement): HTMLButtonElement {
+    const referenceBounds = reference.getBoundingClientRect();
+    const button = document.createElement("button");
+    button.className = reference.className;
+    button.style.cssText = reference.style.cssText;
+    button.style.boxSizing = "border-box";
+    if (referenceBounds.width > 0) button.style.width = `${referenceBounds.width}px`;
+    if (referenceBounds.height > 0) button.style.height = `${referenceBounds.height}px`;
+    return button;
   }
 
   function injectTrenchesActions(): void {
     document.querySelectorAll<HTMLElement>(CARD_SELECTOR).forEach((card) => {
-      const actionGroup = card.querySelector<HTMLElement>(CARD_ACTIONS_SELECTOR);
-      if (!actionGroup || actionGroup.querySelector(ACTION_SELECTOR)) return;
-      const buyActions = Array.from(actionGroup.querySelectorAll<HTMLButtonElement>("button")).filter(
-        (button) => actionName(button).toLowerCase() === "buy",
-      );
-      const secondBuy = buyActions[1];
-      if (!secondBuy) return;
+      const leftRail = card.querySelector<HTMLElement>(CARD_LEFT_RAIL_SELECTOR);
+      if (!leftRail || leftRail.querySelector(ACTION_SELECTOR)) return;
+      const presentationReference = leftRail.querySelector<HTMLButtonElement>("button");
+      if (!presentationReference) return;
 
-      replacedNativeActions.set(secondBuy, {
-        nodes: Array.from(secondBuy.childNodes),
-        ariaLabel: secondBuy.getAttribute("aria-label"),
-        title: secondBuy.getAttribute("title"),
-        style: secondBuy.getAttribute("style"),
-      });
-      configureVampAction(secondBuy);
+      const button = createPresentationMatchedButton(presentationReference);
+      configureVampAction(button);
+      leftRail.append(button);
     });
   }
 
@@ -116,27 +102,12 @@ export function installGmgnCaptureBridge(launchComposer: LaunchComposer): void {
     const favorite = rail.querySelector<HTMLButtonElement>('button[aria-label="Favorite"]');
     if (!favorite) return;
 
-    const button = favorite.cloneNode(true) as HTMLButtonElement;
-    button.removeAttribute("id");
+    const button = createPresentationMatchedButton(favorite);
     configureVampAction(button);
     favorite.insertAdjacentElement("afterend", button);
   }
 
-  function restoreNativeActions(): void {
-    replacedNativeActions.forEach((state, button) => {
-      actionCleanup.get(button)?.();
-      button.replaceChildren(...state.nodes);
-      state.ariaLabel === null ? button.removeAttribute("aria-label") : button.setAttribute("aria-label", state.ariaLabel);
-      state.title === null ? button.removeAttribute("title") : button.setAttribute("title", state.title);
-      state.style === null ? button.removeAttribute("style") : button.setAttribute("style", state.style);
-      button.removeAttribute("aria-describedby");
-      delete button.dataset.vampAction;
-    });
-    replacedNativeActions.clear();
-  }
-
   function removeTokenSurfaceActions(): void {
-    restoreNativeActions();
     document.querySelectorAll<HTMLButtonElement>(ACTION_SELECTOR).forEach((button) => {
       actionCleanup.get(button)?.();
       button.remove();
