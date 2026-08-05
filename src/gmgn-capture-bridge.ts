@@ -1,4 +1,5 @@
 import type { LaunchComposer } from "./launch-composer";
+import type { GmgnSourceTokenAdapter } from "./gmgn-source-token";
 
 const ACTION_NAME = "Vamp this token";
 const ACTION_SELECTOR = '[data-vamp-action="true"]';
@@ -7,7 +8,10 @@ const CARD_LEFT_RAIL_SELECTOR = '[data-testid="card-left-hover-rail"]';
 const CHART_RAIL_SELECTOR = '[data-testid="chart-action-rail"]';
 const ROUTE_CHANGE_EVENT = "vamp:locationchange";
 
-export function installGmgnCaptureBridge(launchComposer: LaunchComposer): void {
+export function installGmgnCaptureBridge(
+  launchComposer: LaunchComposer,
+  sourceTokenAdapter: GmgnSourceTokenAdapter,
+): void {
   let tokenSurfaceRefreshScheduled = false;
   const actionCleanup = new WeakMap<HTMLButtonElement, () => void>();
   const tooltip = createTooltip();
@@ -55,7 +59,9 @@ export function installGmgnCaptureBridge(launchComposer: LaunchComposer): void {
 
     const openLaunchComposer = () => {
       hideTooltip();
-      launchComposer.open(button);
+      const sourceToken = sourceTokenAdapter.resolve(button);
+      if (!sourceToken) return;
+      launchComposer.open(button, sourceToken);
     };
     const show = () => showTooltip(button);
     button.addEventListener("click", openLaunchComposer);

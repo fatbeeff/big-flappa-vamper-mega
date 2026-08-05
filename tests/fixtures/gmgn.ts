@@ -89,3 +89,55 @@ export const hiddenTrenchesFixture = `<!doctype html>
     </script>
   </body>
 </html>`;
+
+export type SourceTokenFixture = {
+  sourceAddress: string;
+  translatedName?: string;
+  translatedSymbol?: string;
+  imageUrl?: string;
+  description?: string;
+  website?: string;
+  x?: string;
+  telegram?: string;
+  metadataPending?: boolean;
+};
+
+export function metadataFixture(
+  surface: "trenches" | "chart",
+  sourceToken: SourceTokenFixture,
+): string {
+  const tokenDetails = `<div data-testid="token-context"${sourceToken.metadataPending ? ' aria-busy="true"' : ""}>
+    ${sourceToken.translatedName ? `<h2 data-token-translation-name>${escapeHtml(sourceToken.translatedName)}</h2>` : ""}
+    ${sourceToken.translatedSymbol ? `<span data-token-translation-symbol>${escapeHtml(sourceToken.translatedSymbol)}</span>` : ""}
+    ${sourceToken.imageUrl ? `<img data-token-primary-image src="${escapeHtml(sourceToken.imageUrl)}">` : ""}
+    ${sourceToken.description ? `<p data-token-description>${escapeHtml(sourceToken.description)}</p>` : ""}
+    ${tokenLink("website", sourceToken.website)}${tokenLink("x", sourceToken.x)}${tokenLink("telegram", sourceToken.telegram)}
+  </div>`;
+
+  if (surface === "trenches") {
+    return `<!doctype html><html lang="en"><head><meta charset="utf-8"></head><body data-chain="bsc" data-surface="trenches"><main>
+      <article data-testid="trenches-card" data-token-address="${escapeHtml(sourceToken.sourceAddress)}">
+        ${tokenDetails}
+        <div data-testid="card-left-hover-rail"><button type="button" aria-label="Pin token">Pin</button></div>
+        <div data-testid="card-hover-actions"><button type="button">Buy</button></div>
+      </article>
+    </main></body></html>`;
+  }
+
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8"></head><body data-chain="bsc" data-surface="chart"><main>
+    ${tokenDetails}
+    <aside data-testid="chart-action-rail"><button type="button" aria-label="Favorite">Favorite</button></aside>
+  </main></body></html>`;
+}
+
+function tokenLink(kind: string, value: string | undefined): string {
+  return value ? `<a data-token-link="${kind}" href="${escapeHtml(value)}">${kind}</a>` : "";
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
