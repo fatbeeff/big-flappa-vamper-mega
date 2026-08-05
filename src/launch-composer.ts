@@ -1,3 +1,6 @@
+import { getActiveTemplate } from "./launch-templates";
+import { paymentAssetLabel } from "./payment-assets";
+
 export interface LaunchComposer {
   open(invoker: HTMLButtonElement): void;
   dismiss(): void;
@@ -33,8 +36,8 @@ export function createLaunchComposer(): LaunchComposer {
           <button type="button" aria-label="Close Launch Composer">✕</button>
         </header>
         <div class="columns">
-          <section><h2>Launch Metadata</h2><p>Source Token details will appear here.</p></section>
-          <section><h2>Launch Mechanics</h2><p>Active Template settings will appear here.</p></section>
+          <section aria-labelledby="vamp-metadata-heading"><h2 id="vamp-metadata-heading">Launch Metadata</h2><p>Source Token Launch Metadata will appear here.</p></section>
+          <section aria-labelledby="vamp-mechanics-heading"><h2 id="vamp-mechanics-heading">Launch Mechanics</h2><div data-active-template><p>Loading Active Template…</p></div></section>
         </div>
       </div>
     </div>`;
@@ -61,10 +64,17 @@ export function createLaunchComposer(): LaunchComposer {
   });
 
   return {
-    open(button) {
+    async open(button) {
       invoker = button;
       host.hidden = false;
       closeButton.focus();
+      const template = await getActiveTemplate();
+      const summary = shadow.querySelector<HTMLElement>("[data-active-template]")!;
+      summary.replaceChildren();
+      const label = document.createElement("p"); label.textContent = "Active Template";
+      const name = document.createElement("strong"); name.textContent = template.name;
+      const mechanics = document.createElement("p"); mechanics.textContent = `${paymentAssetLabel(template.mechanics.paymentAssetId)} · Buy tax ${template.mechanics.buyTaxPercent}% · Sell tax ${template.mechanics.sellTaxPercent}%`;
+      summary.append(label, name, mechanics);
     },
     dismiss,
   };

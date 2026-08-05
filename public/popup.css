@@ -5,7 +5,7 @@
   color: #f1f2f4;
 }
 
-body { margin: 0; min-width: 320px; }
+body { margin: 0; min-width: 420px; }
 main { padding: 18px; }
 header { display: flex; align-items: center; gap: 12px; }
 header img { width: 42px; height: 42px; border-radius: 12px; }
@@ -15,6 +15,25 @@ h2 { font-size: 14px; }
 .eyebrow { color: #ff5b64; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 section { margin: 18px 0; padding: 14px; border: 1px solid #2c2f34; border-radius: 10px; background: #191b1f; }
 section p { margin-top: 6px; color: #9da1aa; font-size: 12px; line-height: 1.45; }
+.section-heading, .template-title, .template-actions, .transfer-actions, .form-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+button, .import-button { border: 1px solid #3a3d43; border-radius: 7px; background: #24262b; color: #f1f2f4; padding: 7px 9px; font: inherit; cursor: pointer; }
+button:hover, .import-button:hover { border-color: #ff5b64; }
+.template-list { display: grid; gap: 8px; margin-top: 12px; }
+.template-card { border: 1px solid #2c2f34; border-radius: 8px; padding: 10px; }
+.template-card p { margin-top: 4px; }
+.template-actions { justify-content: flex-end; margin-top: 8px; }
+.active-badge { color: #ff737b; font-size: 10px; font-weight: 700; text-transform: uppercase; }
+form { margin-top: 12px; padding-top: 12px; border-top: 1px solid #2c2f34; }
+form[hidden] { display: none; }
+h3 { margin: 0 0 10px; font-size: 13px; }
+form label { display: grid; gap: 4px; color: #b7bac1; font-size: 11px; }
+input, select { min-width: 0; border: 1px solid #3a3d43; border-radius: 6px; background: #111214; color: #f1f2f4; padding: 7px; }
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 9px; }
+.form-actions { justify-content: flex-end; margin-top: 10px; }
+.transfer-actions { justify-content: flex-start; margin-top: 12px; }
+.import-button input { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); }
+.status { min-height: 18px; }
+.status.error { color: #ff858b; }
 dl { margin: 0; display: grid; gap: 8px; }
 dl div { display: flex; justify-content: space-between; gap: 16px; font-size: 12px; }
 dt { color: #9da1aa; }

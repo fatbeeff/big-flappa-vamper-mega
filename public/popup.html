@@ -19,12 +19,39 @@
         <h2 id="setup-heading">Extension ready</h2>
         <p>Open a supported GMGN BSC token surface to begin a launch.</p>
       </section>
+      <section aria-labelledby="templates-heading" class="templates">
+        <div class="section-heading">
+          <div><h2 id="templates-heading">Launch Templates</h2><p>Reusable Launch Mechanics for new launches.</p></div>
+          <button id="create-template" type="button">Create template</button>
+        </div>
+        <div id="template-list" class="template-list"></div>
+        <form id="template-form" hidden>
+          <h3 id="template-form-title">Create Launch Template</h3>
+          <label>Template name<input id="template-name" required maxlength="80"></label>
+          <label>Payment asset<select id="payment-asset" required></select></label>
+          <div class="field-grid">
+            <label>Buy tax percentage<input id="buy-tax" type="number" min="0" max="100" step="0.01" required></label>
+            <label>Sell tax percentage<input id="sell-tax" type="number" min="0" max="100" step="0.01" required></label>
+            <label>Creator funds allocation basis points<input id="creator-funds-allocation" type="number" min="0" max="10000" step="1" required></label>
+            <label>Burn allocation basis points<input id="burn-allocation" type="number" min="0" max="10000" step="1" required></label>
+            <label>Dividend allocation basis points<input id="dividend-allocation" type="number" min="0" max="10000" step="1" required></label>
+            <label>Liquidity allocation basis points<input id="liquidity-allocation" type="number" min="0" max="10000" step="1" required></label>
+            <label>Creator purchase amount<input id="creator-purchase" inputmode="decimal" pattern="[0-9]+(\.[0-9]+)?" required></label>
+          </div>
+          <div class="form-actions"><button type="button" id="cancel-template">Cancel</button><button type="submit">Save template</button></div>
+        </form>
+        <div class="transfer-actions">
+          <button id="export-templates" type="button">Export templates</button>
+          <label class="import-button">Import templates JSON<input id="template-import" type="file" accept="application/json,.json"></label>
+        </div>
+        <p id="template-status" class="status" aria-live="polite"></p>
+      </section>
       <dl>
         <div><dt>GMGN</dt><dd>Shell connected</dd></div>
         <div><dt>Flap</dt><dd>Setup required</dd></div>
         <div><dt>Version</dt><dd id="extension-version">—</dd></div>
       </dl>
     </main>
-    <script src="popup.js"></script>
+    <script src="popup.js" type="module"></script>
   </body>
 </html>
