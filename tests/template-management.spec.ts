@@ -8,11 +8,11 @@ test.describe("Launch Template configuration", () => {
     await expect(popup.getByText("Reusable Launch Mechanics for new launches.")).toBeVisible();
     await expect(popup.getByRole("radio", { name: /Balanced BNB/ })).toBeChecked();
     const bundledBalanced = popup.getByRole("article", { name: "Balanced BNB template" });
-    const bundledZeroTax = popup.getByRole("article", { name: "Zero-tax BNB template" });
-    await expect(bundledZeroTax).toBeVisible();
+    const bundledGrowth = popup.getByRole("article", { name: "Growth BNB template" });
+    await expect(bundledGrowth).toBeVisible();
     await expect(bundledBalanced.getByText("Bundled")).toBeVisible();
     await expect(bundledBalanced.getByRole("button", { name: /Edit|Delete/ })).toHaveCount(0);
-    await expect(bundledZeroTax.getByRole("button", { name: /Edit|Delete/ })).toHaveCount(0);
+    await expect(bundledGrowth.getByRole("button", { name: /Edit|Delete/ })).toHaveCount(0);
     await expect(popup.getByText("Active Template", { exact: true })).toHaveCount(1);
 
     await popup.getByRole("button", { name: "Create template" }).click();
@@ -56,7 +56,8 @@ test.describe("Launch Template configuration", () => {
     await expect(mechanics.getByText("Active Template", { exact: true })).toBeVisible();
     await expect(mechanics.getByText("Fast launch", { exact: true })).toBeVisible();
     await expect(mechanics).toContainText("BNB · Buy tax 3% · Sell tax 5%");
-    await expect(mechanics.getByRole("combobox")).toHaveCount(0);
+    await mechanics.getByText("Edit Launch Mechanics").click();
+    await expect(mechanics.getByLabel("Payment quote asset")).toHaveCount(1);
 
     await persisted.getByRole("button", { name: "Delete Fast launch" }).click();
     await expect(persisted).toHaveCount(0);
@@ -68,6 +69,7 @@ test.describe("Launch Template configuration", () => {
     const popup = await extension.openToolbarConfiguration();
     await popup.getByRole("button", { name: "Create template" }).click();
     await popup.getByLabel("Template name").fill("To replace");
+    await popup.getByLabel("Buy tax percentage").fill("1");
     await popup.getByRole("button", { name: "Save template" }).click();
     const downloadPromise = popup.waitForEvent("download");
     await popup.getByRole("button", { name: "Export templates" }).click();
@@ -113,7 +115,7 @@ test.describe("Launch Template configuration", () => {
     await expect(teamBnb.getByRole("radio", { name: /Team BNB/ })).toBeChecked();
     await expect(popup.getByRole("article", { name: "To replace template" })).toHaveCount(0);
     await expect(popup.getByRole("article", { name: "Balanced BNB template" })).toBeVisible();
-    await expect(popup.getByRole("article", { name: "Zero-tax BNB template" })).toBeVisible();
+    await expect(popup.getByRole("article", { name: "Growth BNB template" })).toBeVisible();
     await expect(popup.getByText("Templates imported.")).toBeVisible();
   });
 
@@ -163,8 +165,51 @@ test.describe("Launch Template configuration", () => {
         }],
       })),
     });
-    await expect(popup.getByRole("alert")).toContainText("total 10000");
+    await expect(popup.getByRole("alert")).toContainText("total 10,000 bps");
     await expect(popup.getByRole("article", { name: "Invalid allocation template" })).toHaveCount(0);
     await expect(balanced.getByRole("radio", { name: /Balanced BNB/ })).toBeChecked();
+  });
+
+  test("rejects invalid tax mechanics from popup, import, and stored state", async ({ extension }) => {
+    const popup = await extension.openToolbarConfiguration();
+    await popup.getByRole("button", { name: "Create template" }).click();
+    await popup.getByLabel("Template name").fill("Invalid tax");
+    await popup.getByLabel("Buy tax percentage").fill("99");
+    await popup.getByLabel("Sell tax percentage").fill("1");
+    await popup.getByRole("button", { name: "Save template" }).click();
+    await expect(popup.getByRole("alert")).toContainText("0–10%");
+    await expect(popup.getByRole("article", { name: "Invalid tax template" })).toHaveCount(0);
+
+    await popup.getByLabel("Buy tax percentage").fill("0");
+    await popup.getByLabel("Sell tax percentage").fill("0");
+    await popup.getByRole("button", { name: "Save template" }).click();
+    await expect(popup.getByRole("alert")).toContainText("requires buy tax or sell tax above 0%");
+
+    const zeroTaxImport = {
+      format: "gmgn-vamp-launch-templates", version: 2, activeTemplateId: "zero-tax", templates: [{
+        id: "zero-tax", name: "Zero tax", mechanics: {
+          paymentAssetId: "native-bnb", buyTaxPercent: 0, sellTaxPercent: 0,
+          allocationBps: { creatorFunds: 10000, burn: 0, dividend: 0, liquidity: 0 }, creatorPurchaseAmount: "0",
+        },
+      }],
+    };
+    await popup.getByLabel("Import templates JSON").setInputFiles({
+      name: "zero-tax.json", mimeType: "application/json", buffer: Buffer.from(JSON.stringify(zeroTaxImport)),
+    });
+    await expect(popup.getByRole("alert")).toContainText("requires buy tax or sell tax above 0%");
+    await expect(popup.getByRole("article", { name: "Zero tax template" })).toHaveCount(0);
+
+    await popup.evaluate(async (document) => chrome.storage.local.set({ launchTemplateDocument: document }), {
+      ...zeroTaxImport,
+      activeTemplateId: "high-tax",
+      templates: [
+        { ...zeroTaxImport.templates[0], id: "high-tax", name: "High tax", mechanics: { ...zeroTaxImport.templates[0].mechanics, buyTaxPercent: 99, sellTaxPercent: 1 } },
+        { ...zeroTaxImport.templates[0], id: "survivor", name: "Survivor", mechanics: { ...zeroTaxImport.templates[0].mechanics, buyTaxPercent: 1, sellTaxPercent: 1 } },
+      ],
+    });
+    await popup.reload();
+    await expect(popup.getByRole("radio", { name: /Balanced BNB/ })).toBeChecked();
+    await expect(popup.getByRole("article", { name: "High tax template" })).toHaveCount(0);
+    await expect(popup.getByRole("article", { name: "Survivor template" })).toBeVisible();
   });
 });
