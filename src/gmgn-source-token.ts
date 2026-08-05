@@ -87,7 +87,9 @@ function waitForMetadata(
     const settle = (metadata: LaunchMetadataEnrichment = {}) => {
       if (settled) return;
       settled = true;
-      observer.disconnect();
+      metadataObserver.disconnect();
+      addressObserver.disconnect();
+      removalObserver.disconnect();
       window.clearTimeout(timeout);
       window.removeEventListener(ROUTE_CHANGE_EVENT, checkLifecycle);
       window.removeEventListener("popstate", checkLifecycle);
@@ -103,13 +105,25 @@ function waitForMetadata(
       }
     };
 
-    const observer = new MutationObserver(checkLifecycle);
-    observer.observe(document.documentElement, {
+    const metadataObserver = new MutationObserver(checkLifecycle);
+    metadataObserver.observe(root, {
       attributes: true,
-      attributeFilter: ["aria-busy", "data-token-address"],
+      attributeFilter: ["aria-busy"],
       childList: true,
       subtree: true,
       characterData: true,
+    });
+
+    const addressObserver = new MutationObserver(checkLifecycle);
+    addressObserver.observe(surface, {
+      attributes: true,
+      attributeFilter: ["data-token-address"],
+    });
+
+    const removalObserver = new MutationObserver(checkLifecycle);
+    removalObserver.observe(surface.parentElement ?? document.documentElement, {
+      childList: true,
+      subtree: true,
     });
     window.addEventListener(ROUTE_CHANGE_EVENT, checkLifecycle);
     window.addEventListener("popstate", checkLifecycle);
