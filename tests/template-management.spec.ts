@@ -6,20 +6,31 @@ test.describe("Launch Template configuration", () => {
 
     await expect(popup.getByRole("heading", { name: "Launch Templates" })).toBeVisible();
     await expect(popup.getByRole("radio", { name: /Balanced BNB/ })).toBeChecked();
-    await expect(popup.getByRole("article", { name: "Zero-tax BNB template" })).toBeVisible();
+    const bundledBalanced = popup.getByRole("article", { name: "Balanced BNB template" });
+    const bundledZeroTax = popup.getByRole("article", { name: "Zero-tax BNB template" });
+    await expect(bundledZeroTax).toBeVisible();
+    await expect(bundledBalanced.getByText("Bundled")).toBeVisible();
+    await expect(bundledBalanced.getByRole("button", { name: /Edit|Delete/ })).toHaveCount(0);
+    await expect(bundledZeroTax.getByRole("button", { name: /Edit|Delete/ })).toHaveCount(0);
     await expect(popup.getByText("Active Template", { exact: true })).toHaveCount(1);
 
     await popup.getByRole("button", { name: "Create template" }).click();
     await popup.getByLabel("Template name").fill("Fast launch");
-    await popup.getByLabel("Payment asset").fill("USDT");
+    await expect(popup.getByLabel("Payment asset")).toHaveRole("combobox");
+    await expect(popup.getByLabel("Payment asset").getByRole("option")).toHaveCount(1);
+    await popup.getByLabel("Payment asset").selectOption({ label: "BNB" });
     await popup.getByLabel("Buy tax percentage").fill("3");
     await popup.getByLabel("Sell tax percentage").fill("4");
-    await popup.getByLabel("Tax allocation percentage").fill("80");
+    await popup.getByLabel("Creator funds allocation basis points").fill("6000");
+    await popup.getByLabel("Burn allocation basis points").fill("1000");
+    await popup.getByLabel("Dividend allocation basis points").fill("1000");
+    await popup.getByLabel("Liquidity allocation basis points").fill("2000");
     await popup.getByLabel("Creator purchase amount").fill("0.25");
     await popup.getByRole("button", { name: "Save template" }).click();
 
     const fastLaunch = popup.getByRole("article", { name: "Fast launch template" });
-    await expect(fastLaunch).toContainText("USDT");
+    await expect(fastLaunch).toContainText("BNB");
+    await expect(fastLaunch).toContainText("Creator funds 6000 bps");
     await fastLaunch.getByRole("radio", { name: /Fast launch/ }).check();
     await expect(popup.getByText("Active Template", { exact: true })).toHaveCount(1);
     await expect(fastLaunch.getByText("Active Template", { exact: true })).toBeVisible();
@@ -35,6 +46,17 @@ test.describe("Launch Template configuration", () => {
     await expect(persisted.getByRole("radio", { name: /Fast launch/ })).toBeChecked();
     await expect(persisted).toContainText("Sell tax 5%");
 
+    const tokenSurface = await extension.openGmgnTokenSurface(
+      (await import("./fixtures/gmgn")).trenchesFixture,
+      "https://gmgn.ai/?chain=bsc&tab=trenches",
+    );
+    await tokenSurface.getByRole("button", { name: "Vamp this token" }).click();
+    const mechanics = tokenSurface.getByRole("dialog", { name: "Launch Composer" }).getByRole("region", { name: "Launch Mechanics" });
+    await expect(mechanics.getByText("Active Template", { exact: true })).toBeVisible();
+    await expect(mechanics.getByText("Fast launch", { exact: true })).toBeVisible();
+    await expect(mechanics).toContainText("BNB · Buy tax 3% · Sell tax 5%");
+    await expect(mechanics.getByRole("combobox")).toHaveCount(0);
+
     await persisted.getByRole("button", { name: "Delete Fast launch" }).click();
     await expect(persisted).toHaveCount(0);
     await expect(popup.getByText("Active Template", { exact: true })).toHaveCount(1);
@@ -43,34 +65,39 @@ test.describe("Launch Template configuration", () => {
 
   test("exports a versioned mechanics-only document and imports it into another installation", async ({ extension }) => {
     const popup = await extension.openToolbarConfiguration();
+    await popup.getByRole("button", { name: "Create template" }).click();
+    await popup.getByLabel("Template name").fill("To replace");
+    await popup.getByRole("button", { name: "Save template" }).click();
     const downloadPromise = popup.waitForEvent("download");
     await popup.getByRole("button", { name: "Export templates" }).click();
     const download = await downloadPromise;
     const exported = JSON.parse(await (await import("node:fs/promises")).readFile(await download.path() as string, "utf8"));
 
-    expect(exported).toMatchObject({ format: "gmgn-vamp-launch-templates", version: 1 });
+    expect(exported).toMatchObject({ format: "gmgn-vamp-launch-templates", version: 2 });
     expect(exported.activeTemplateId).toBeTruthy();
+    expect(exported.templates).toHaveLength(1);
+    expect(exported.templates[0]).not.toHaveProperty("source");
     expect(exported.templates[0].mechanics).toMatchObject({
-      paymentAsset: expect.any(String),
+      paymentAssetId: expect.any(String),
       buyTaxPercent: expect.any(Number),
       sellTaxPercent: expect.any(Number),
-      taxAllocationPercent: expect.any(Number),
+      allocationBps: { creatorFunds: expect.any(Number), burn: expect.any(Number), dividend: expect.any(Number), liquidity: expect.any(Number) },
       creatorPurchaseAmount: expect.any(String),
     });
     expect(JSON.stringify(exported)).not.toMatch(/metadata|tokenName|symbol|description|image/i);
 
     const importedDocument = {
       format: "gmgn-vamp-launch-templates",
-      version: 1,
-      activeTemplateId: "team-rwa",
+      version: 2,
+      activeTemplateId: "team-bnb",
       templates: [{
-        id: "team-rwa",
-        name: "Team RWA",
+        id: "team-bnb",
+        name: "Team BNB",
         mechanics: {
-          paymentAsset: "USD1",
+          paymentAssetId: "native-bnb",
           buyTaxPercent: 2,
           sellTaxPercent: 6,
-          taxAllocationPercent: 75,
+          allocationBps: { creatorFunds: 7000, burn: 1000, dividend: 0, liquidity: 2000 },
           creatorPurchaseAmount: "0",
         },
       }],
@@ -80,9 +107,12 @@ test.describe("Launch Template configuration", () => {
       mimeType: "application/json",
       buffer: Buffer.from(JSON.stringify(importedDocument)),
     });
-    const teamRwa = popup.getByRole("article", { name: "Team RWA template" });
-    await expect(teamRwa).toContainText("USD1");
-    await expect(teamRwa.getByRole("radio", { name: /Team RWA/ })).toBeChecked();
+    const teamBnb = popup.getByRole("article", { name: "Team BNB template" });
+    await expect(teamBnb).toContainText("BNB");
+    await expect(teamBnb.getByRole("radio", { name: /Team BNB/ })).toBeChecked();
+    await expect(popup.getByRole("article", { name: "To replace template" })).toHaveCount(0);
+    await expect(popup.getByRole("article", { name: "Balanced BNB template" })).toBeVisible();
+    await expect(popup.getByRole("article", { name: "Zero-tax BNB template" })).toBeVisible();
     await expect(popup.getByText("Templates imported.")).toBeVisible();
   });
 
@@ -104,18 +134,36 @@ test.describe("Launch Template configuration", () => {
       mimeType: "application/json",
       buffer: Buffer.from(JSON.stringify({
         format: "gmgn-vamp-launch-templates",
-        version: 1,
+        version: 2,
         activeTemplateId: "unsafe",
         templates: [{
           id: "unsafe",
           name: "Unsafe",
-          mechanics: { paymentAsset: "BNB", buyTaxPercent: 1, sellTaxPercent: 1, taxAllocationPercent: 100, creatorPurchaseAmount: "0" },
+          mechanics: { paymentAssetId: "native-bnb", buyTaxPercent: 1, sellTaxPercent: 1, allocationBps: { creatorFunds: 10000, burn: 0, dividend: 0, liquidity: 0 }, creatorPurchaseAmount: "0" },
           metadata: { symbol: "LEAK" },
         }],
       })),
     });
     await expect(popup.getByRole("alert")).toContainText("unsupported fields");
     await expect(popup.getByRole("article", { name: "Unsafe template" })).toHaveCount(0);
+    await expect(balanced.getByRole("radio", { name: /Balanced BNB/ })).toBeChecked();
+
+    await popup.getByLabel("Import templates JSON").setInputFiles({
+      name: "invalid-allocation.json",
+      mimeType: "application/json",
+      buffer: Buffer.from(JSON.stringify({
+        format: "gmgn-vamp-launch-templates",
+        version: 2,
+        activeTemplateId: "invalid-allocation",
+        templates: [{
+          id: "invalid-allocation",
+          name: "Invalid allocation",
+          mechanics: { paymentAssetId: "native-bnb", buyTaxPercent: 1, sellTaxPercent: 1, allocationBps: { creatorFunds: 6000, burn: 1000, dividend: 1000, liquidity: 1000 }, creatorPurchaseAmount: "0" },
+        }],
+      })),
+    });
+    await expect(popup.getByRole("alert")).toContainText("total 10000");
+    await expect(popup.getByRole("article", { name: "Invalid allocation template" })).toHaveCount(0);
     await expect(balanced.getByRole("radio", { name: /Balanced BNB/ })).toBeChecked();
   });
 });

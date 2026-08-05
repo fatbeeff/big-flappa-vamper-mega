@@ -28,11 +28,14 @@
         <form id="template-form" hidden>
           <h3 id="template-form-title">Create Launch Template</h3>
           <label>Template name<input id="template-name" required maxlength="80"></label>
-          <label>Payment asset<input id="payment-asset" required maxlength="40"></label>
+          <label>Payment asset<select id="payment-asset" required></select></label>
           <div class="field-grid">
             <label>Buy tax percentage<input id="buy-tax" type="number" min="0" max="100" step="0.01" required></label>
             <label>Sell tax percentage<input id="sell-tax" type="number" min="0" max="100" step="0.01" required></label>
-            <label>Tax allocation percentage<input id="tax-allocation" type="number" min="0" max="100" step="0.01" required></label>
+            <label>Creator funds allocation basis points<input id="creator-funds-allocation" type="number" min="0" max="10000" step="1" required></label>
+            <label>Burn allocation basis points<input id="burn-allocation" type="number" min="0" max="10000" step="1" required></label>
+            <label>Dividend allocation basis points<input id="dividend-allocation" type="number" min="0" max="10000" step="1" required></label>
+            <label>Liquidity allocation basis points<input id="liquidity-allocation" type="number" min="0" max="10000" step="1" required></label>
             <label>Creator purchase amount<input id="creator-purchase" inputmode="decimal" pattern="[0-9]+(\.[0-9]+)?" required></label>
           </div>
           <div class="form-actions"><button type="button" id="cancel-template">Cancel</button><button type="submit">Save template</button></div>
