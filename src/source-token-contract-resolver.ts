@@ -1,15 +1,16 @@
 import type { SourceTokenIdentity } from "./launch-context";
 
 export interface SourceTokenContractResolver {
-  resolve(address: string): Promise<SourceTokenIdentity>;
+  resolve(address: string, network?: "bsc" | "robinhood"): Promise<SourceTokenIdentity>;
 }
 
 export function createSourceTokenContractResolver(): SourceTokenContractResolver {
   return {
-    async resolve(address) {
+    async resolve(address, network = "bsc") {
       const response: unknown = await chrome.runtime.sendMessage({
         type: "vamp:resolve-source-token",
         address,
+        network,
       });
       if (!isSuccessfulResponse(response)) throw new Error("Source Token identity resolution failed");
       return response.identity;

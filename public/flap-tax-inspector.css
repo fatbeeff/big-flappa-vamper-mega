@@ -1,0 +1,72 @@
+[data-flap-tax-inspector-badge],
+[data-long-authenticity-badge] {
+  align-items: center;
+  box-sizing: border-box;
+  display: inline-flex;
+  flex: 0 0 auto;
+  gap: 5px;
+  min-height: 26px;
+  margin-left: 4px;
+  border: 2px solid currentColor;
+  border-radius: 7px;
+  padding: 2px 7px 2px 3px;
+  background: #242827;
+  box-shadow: 0 2px 7px rgb(0 0 0 / 52%);
+  font: 700 11px/16px system-ui, -apple-system, "Segoe UI", sans-serif;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+  z-index: 5;
+}
+
+[data-flap-tax-inspector-badge] img,
+[data-long-authenticity-badge] img {
+  width: 20px;
+  height: 20px;
+  border-radius: 5px;
+  object-fit: cover;
+}
+
+[data-flap-tax-inspector-badge][data-state="complete"] {
+  color: #fff;
+  border-color: #27e984;
+  background: #075c3b;
+}
+
+[data-flap-tax-inspector-badge][data-state="partial"] {
+  color: #fff;
+  border-color: #ff625f;
+  background: #8f2028;
+}
+
+[data-flap-tax-inspector-badge][data-surface="trench"] {
+  pointer-events: none;
+  cursor: inherit;
+}
+
+[data-long-authenticity-badge] {
+  pointer-events: none;
+}
+
+[data-flap-tax-inspector-badge][data-surface="detail"],
+[data-long-authenticity-badge][data-surface="detail"] {
+  align-self: center;
+}
+
+[data-long-authenticity-badge][data-state="checking"],
+[data-long-authenticity-badge][data-state="unavailable"] {
+  color: #b6bcc5;
+  border-color: #6b7280;
+}
+
+[data-long-authenticity-badge][data-state="authentic"] {
+  color: #fff;
+  border-color: #27e984;
+  background: #075c3b;
+}
+
+[data-long-authenticity-badge][data-state="fake"] {
+  color: #fff;
+  border-color: #ff625f;
+  background: #8f2028;
+}

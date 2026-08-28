@@ -1,29 +1,30 @@
 import { deleteOperatorTemplate, exportOperatorTemplates, importOperatorTemplates, loadTemplateState, saveOperatorTemplate, selectActiveTemplate, type LaunchTemplate, type TemplateState } from "./launch-templates";
 import { BUNDLED_PAYMENT_ASSETS, isPaymentAssetCacheStale, loadPaymentAssetCache, loadPaymentAssetRegistryEndpoint, paymentAssetLabel, refreshPaymentAssetCache, refreshPaymentAssetsIfStale, type PaymentAsset, type PaymentAssetCache } from "./payment-assets";
-import { formatBnbBalance, getBnbBalance } from "./bsc-rpc";
-import { importSharedDeploymentWallet, loadSharedDeploymentWallet, type SharedDeploymentWallet } from "./shared-wallet";
+import { loadDiscordSidebarSettings, saveDiscordSidebarSettings, type DiscordChannelMode, type DiscordServerMode, type DiscordSidebarSettings } from "./discord-sidebar-settings";
 
 const version = document.querySelector<HTMLElement>("#extension-version");
 const list = required<HTMLElement>("#template-list");
 const form = required<HTMLFormElement>("#template-form");
 const statusMessage = required<HTMLElement>("#template-status");
 const importInput = required<HTMLInputElement>("#template-import");
-const paymentAsset = required<HTMLSelectElement>("#payment-asset");
 let state: TemplateState;
 let editingId: string | undefined;
 let cachedAssets: readonly PaymentAsset[] = BUNDLED_PAYMENT_ASSETS;
-let walletBalanceGeneration = 0;
+let discordSettings: DiscordSidebarSettings;
 
 if (version) version.textContent = chrome.runtime.getManifest().version;
 void initialize();
-void initializeWallet();
+void initializeDiscordSidebar();
+
 
 required<HTMLButtonElement>("#create-template").addEventListener("click", () => openForm());
 required<HTMLButtonElement>("#cancel-template").addEventListener("click", closeForm);
 required<HTMLButtonElement>("#export-templates").addEventListener("click", exportTemplates);
 required<HTMLButtonElement>("#refresh-payment-assets").addEventListener("click", () => refreshAssets(true));
-required<HTMLButtonElement>("#refresh-wallet-balance").addEventListener("click", () => refreshWalletBalance());
-required<HTMLFormElement>("#wallet-form").addEventListener("submit", saveWallet);
+required<HTMLInputElement>("#discord-sidebar-enabled").addEventListener("change", () => void saveDiscordControls());
+required<HTMLElement>("#discord-sidebar-controls").addEventListener("change", () => void saveDiscordControls());
+required<HTMLElement>("#discord-sidebar-controls").addEventListener("input", renderRangeControls);
+form.addEventListener("input", renderRangeControls);
 form.addEventListener("submit", saveTemplate);
 importInput.addEventListener("change", importTemplates);
 
@@ -41,91 +42,45 @@ async function initialize(): Promise<void> {
   if (registryEndpoint && isPaymentAssetCacheStale(cache)) void refreshAssets(false);
 }
 
-async function initializeWallet(): Promise<void> {
-  const wallet = await loadSharedDeploymentWallet();
-  if (!wallet) {
-    renderMissingWallet();
-    return;
-  }
-  renderConfiguredWallet(wallet);
-  await refreshWalletBalance(wallet);
+async function initializeDiscordSidebar(): Promise<void> {
+  discordSettings = await loadDiscordSidebarSettings();
+  renderDiscordControls();
 }
 
-async function saveWallet(event: SubmitEvent): Promise<void> {
-  event.preventDefault();
-  walletBalanceGeneration += 1;
-  const input = required<HTMLInputElement>("#wallet-private-key");
-  const candidate = input.value;
-  input.value = "";
-  try {
-    const wallet = await importSharedDeploymentWallet(candidate);
-    renderConfiguredWallet(wallet);
-    announceWallet("Shared Deployment Wallet saved.");
-    await refreshWalletBalance(wallet);
-  } catch (error) {
-    announceWallet(error instanceof Error ? `Wallet not saved: ${error.message}` : "Wallet not saved: invalid private key.", true);
-    await refreshWalletBalance();
-  }
+async function saveDiscordControls(): Promise<void> {
+  const narrowWidth = required<HTMLInputElement>("#discord-narrow-width");
+  if (!narrowWidth.reportValidity()) return;
+  discordSettings = {
+    enabled: required<HTMLInputElement>("#discord-sidebar-enabled").checked,
+    serverMode: checkedValue("discord-server-mode") as DiscordServerMode,
+    serversVisible: required<HTMLInputElement>("#discord-servers-visible").checked,
+    channelMode: checkedValue("discord-channel-mode") as DiscordChannelMode,
+    narrowWidth: Number(narrowWidth.value),
+  };
+  await saveDiscordSidebarSettings(discordSettings);
+  renderDiscordControls();
+  announceDiscord(discordSettings.enabled ? "Discord sidebar controls updated." : "Discord sidebar controls disabled.");
 }
 
-function renderMissingWallet(): void {
-  required<HTMLOutputElement>("#wallet-address").textContent = "Not configured";
-  required<HTMLOutputElement>("#wallet-balance").textContent = "--";
-  setWalletConnection("Wallet not configured");
-  required<HTMLButtonElement>("#refresh-wallet-balance").hidden = true;
-  required<HTMLButtonElement>("#save-wallet").textContent = "Import wallet";
+function renderDiscordControls(): void {
+  const enabled = required<HTMLInputElement>("#discord-sidebar-enabled");
+  const serversVisible = required<HTMLInputElement>("#discord-servers-visible");
+  const narrowWidth = required<HTMLInputElement>("#discord-narrow-width");
+  enabled.checked = discordSettings.enabled;
+  checkRadio("discord-server-mode", discordSettings.serverMode);
+  serversVisible.checked = discordSettings.serversVisible;
+  checkRadio("discord-channel-mode", discordSettings.channelMode);
+  narrowWidth.value = String(discordSettings.narrowWidth);
+  document.querySelectorAll<HTMLInputElement>('input[name="discord-server-mode"]').forEach((control) => { control.disabled = !discordSettings.enabled; });
+  serversVisible.disabled = !discordSettings.enabled || discordSettings.serverMode !== "manual";
+  document.querySelectorAll<HTMLInputElement>('input[name="discord-channel-mode"]').forEach((control) => { control.disabled = !discordSettings.enabled; });
+  narrowWidth.disabled = !discordSettings.enabled
+    || (discordSettings.serverMode !== "narrow" && discordSettings.channelMode !== "narrow");
+  renderRangeControls();
 }
 
-function renderConfiguredWallet(wallet: SharedDeploymentWallet): void {
-  required<HTMLOutputElement>("#wallet-address").textContent = wallet.address;
-  required<HTMLButtonElement>("#refresh-wallet-balance").hidden = false;
-  required<HTMLButtonElement>("#save-wallet").textContent = "Replace wallet";
-}
-
-async function refreshWalletBalance(wallet?: SharedDeploymentWallet): Promise<void> {
-  const generation = ++walletBalanceGeneration;
-  const current = wallet ?? await loadSharedDeploymentWallet();
-  if (generation !== walletBalanceGeneration) return;
-  if (!current) {
-    renderMissingWallet();
-    return;
-  }
-  const button = required<HTMLButtonElement>("#refresh-wallet-balance");
-  button.disabled = true;
-  required<HTMLOutputElement>("#wallet-balance").textContent = "Checking...";
-  setWalletConnection("Checking BSC RPC...");
-  if (!navigator.onLine) {
-    required<HTMLOutputElement>("#wallet-balance").textContent = "Unavailable";
-    setWalletConnection("Disconnected");
-    announceWallet("Balance unavailable: this browser is offline.", true);
-    button.disabled = false;
-    return;
-  }
-  try {
-    const balance = await getBnbBalance(current.address);
-    if (generation !== walletBalanceGeneration) return;
-    required<HTMLOutputElement>("#wallet-balance").textContent = formatBnbBalance(balance);
-    setWalletConnection("Connected");
-  } catch {
-    if (generation !== walletBalanceGeneration) return;
-    required<HTMLOutputElement>("#wallet-balance").textContent = "Unavailable";
-    setWalletConnection("BSC RPC unavailable");
-    announceWallet("Balance unavailable: BSC RPC request failed. Try again.", true);
-  } finally {
-    if (generation === walletBalanceGeneration) button.disabled = false;
-  }
-}
-
-function setWalletConnection(message: string): void {
-  required<HTMLOutputElement>("#wallet-connection").textContent = message;
-  required<HTMLElement>("#bsc-rpc-health").textContent = message;
-}
-
-function announceWallet(message: string, error = false): void {
-  const target = required<HTMLElement>("#wallet-status");
-  target.textContent = message;
-  target.setAttribute("role", error ? "alert" : "status");
-  target.classList.toggle("error", error);
+function announceDiscord(message: string): void {
+  required<HTMLElement>("#discord-sidebar-status").textContent = message;
 }
 
 async function refreshTemplates(next?: TemplateState): Promise<void> { state = next ?? await loadTemplateState(); list.replaceChildren(...state.templates.map(renderTemplate)); }
@@ -151,7 +106,7 @@ function openForm(template?: LaunchTemplate): void {
   editingId = template?.id;
   required<HTMLElement>("#template-form-title").textContent = template ? "Edit Launch Template" : "Create Launch Template";
   setValue("template-name", template?.name ?? "");
-  populatePaymentAssetSelect(template?.mechanics.paymentAssetId);
+  renderPaymentAssetOptions(template?.mechanics.paymentAssetId);
   setValue("buy-tax", String(template?.mechanics.buyTaxPercent ?? 1));
   setValue("sell-tax", String(template?.mechanics.sellTaxPercent ?? 1));
   setValue("creator-funds-allocation", String(template?.mechanics.allocationBps.creatorFunds ?? 10_000));
@@ -159,6 +114,7 @@ function openForm(template?: LaunchTemplate): void {
   setValue("dividend-allocation", String(template?.mechanics.allocationBps.dividend ?? 0));
   setValue("liquidity-allocation", String(template?.mechanics.allocationBps.liquidity ?? 0));
   setValue("creator-purchase", template?.mechanics.creatorPurchaseAmount ?? "0");
+  renderRangeControls();
   form.hidden = false;
   required<HTMLInputElement>("#template-name").focus();
 }
@@ -167,9 +123,10 @@ function closeForm(): void { form.hidden = true; editingId = undefined; }
 async function saveTemplate(event: SubmitEvent): Promise<void> {
   event.preventDefault();
   try {
-    const selected = cachedAssets.find(({ id }) => id === paymentAsset.value);
+    const paymentAssetId = checkedValue("payment-asset");
+    const selected = cachedAssets.find(({ id }) => id === paymentAssetId);
     if (!selected?.enabled) throw new Error("Select an enabled payment asset.");
-    const next = await saveOperatorTemplate({ id: editingId ?? crypto.randomUUID(), name: value("template-name").trim(), mechanics: { paymentAssetId: paymentAsset.value, buyTaxPercent: Number(value("buy-tax")), sellTaxPercent: Number(value("sell-tax")), allocationBps: { creatorFunds: Number(value("creator-funds-allocation")), burn: Number(value("burn-allocation")), dividend: Number(value("dividend-allocation")), liquidity: Number(value("liquidity-allocation")) }, creatorPurchaseAmount: value("creator-purchase").trim() } });
+    const next = await saveOperatorTemplate({ id: editingId ?? crypto.randomUUID(), name: value("template-name").trim(), mechanics: { paymentAssetId, buyTaxPercent: Number(value("buy-tax")), sellTaxPercent: Number(value("sell-tax")), allocationBps: { creatorFunds: Number(value("creator-funds-allocation")), burn: Number(value("burn-allocation")), dividend: Number(value("dividend-allocation")), liquidity: Number(value("liquidity-allocation")) }, creatorPurchaseAmount: value("creator-purchase").trim() } });
     closeForm(); await refreshTemplates(next); announce("Template saved.");
   } catch (error) { announceFailure("Template not saved", error); }
 }
@@ -208,21 +165,74 @@ function renderPaymentAssets(cache: PaymentAssetCache): void {
     section.append(heading, assetList); return section;
   });
   required<HTMLElement>("#payment-assets-list").replaceChildren(...groups);
-  populatePaymentAssetSelect(paymentAsset.value || undefined);
+  renderPaymentAssetOptions(checkedValue("payment-asset") || undefined);
 }
 
-function populatePaymentAssetSelect(selected?: string): void {
-  const groups = (["crypto", "rwa"] as const).map((category) => {
-    const group = document.createElement("optgroup"); group.label = category === "crypto" ? "Crypto" : "RWA";
-    for (const asset of cachedAssets.filter((item) => item.category === category)) {
-      const identity = asset.symbol === asset.label ? asset.label : `${asset.symbol} · ${asset.label}`;
-      const option = new Option(`${identity}${asset.enabled ? "" : " — Unavailable"}`, asset.id); option.disabled = !asset.enabled; group.append(option);
-    }
-    return group;
+function renderPaymentAssetOptions(selected?: string): void {
+  const selectedId = selected && cachedAssets.some(({ id }) => id === selected)
+    ? selected
+    : cachedAssets.find(({ enabled }) => enabled)?.id ?? "";
+  const options = cachedAssets.map((asset) => {
+    const label = document.createElement("label");
+    label.className = "asset-option";
+    label.dataset.category = asset.category;
+    if (asset.unavailableReason) label.title = asset.unavailableReason;
+    const input = document.createElement("input");
+    input.type = "radio";
+    input.name = "payment-asset";
+    input.value = asset.id;
+    input.checked = asset.id === selectedId;
+    input.disabled = !asset.enabled;
+    const mark = document.createElement("span");
+    mark.className = "asset-mark";
+    mark.ariaHidden = "true";
+    mark.textContent = asset.symbol.slice(0, 4);
+    const copy = document.createElement("span");
+    copy.className = "asset-copy";
+    const symbol = document.createElement("span");
+    symbol.className = "asset-symbol";
+    symbol.textContent = asset.symbol;
+    const name = document.createElement("span");
+    name.className = "asset-name";
+    name.textContent = asset.enabled ? asset.label : `${asset.label} · unavailable`;
+    copy.append(symbol, name);
+    label.append(input, mark, copy);
+    return label;
   });
-  paymentAsset.replaceChildren(...groups);
-  if (selected && cachedAssets.some(({ id }) => id === selected)) paymentAsset.value = selected;
-  if (!paymentAsset.value) paymentAsset.value = cachedAssets.find(({ enabled }) => enabled)?.id ?? "";
+  required<HTMLElement>("#payment-asset-options").replaceChildren(...options);
+}
+
+function renderRangeControls(): void {
+  for (const input of Array.from(document.querySelectorAll<HTMLInputElement>('input[type="range"]'))) {
+    const output = document.querySelector<HTMLOutputElement>(`[data-range-output="${input.id}"]`);
+    if (output) {
+      const isAllocation = input.id.endsWith("allocation");
+      output.value = input.id === "discord-narrow-width"
+        ? `${Number(input.value).toLocaleString("en-US")} px`
+        : `${formatPercent(Number(input.value) / (isAllocation ? 100 : 1))}%`;
+    }
+    const min = Number(input.min);
+    const max = Number(input.max);
+    input.style.setProperty("--range-progress", `${((Number(input.value) - min) / (max - min)) * 100}%`);
+  }
+  const total = ["creator-funds-allocation", "burn-allocation", "dividend-allocation", "liquidity-allocation"]
+    .reduce((sum, id) => sum + Number(value(id)), 0);
+  const totalOutput = required<HTMLOutputElement>("#template-allocation-total");
+  totalOutput.value = total === 10_000 ? "100% assigned" : `${formatPercent(total / 100)}% assigned`;
+  totalOutput.classList.toggle("invalid", total !== 10_000);
+}
+
+function checkedValue(name: string): string {
+  return document.querySelector<HTMLInputElement>(`input[name="${name}"]:checked`)?.value ?? "";
+}
+
+function checkRadio(name: string, value: string): void {
+  const input = document.querySelector<HTMLInputElement>(`input[name="${name}"][value="${value}"]`);
+  if (input) input.checked = true;
+}
+
+function formatPercent(value: number): string {
+  return Number(value.toFixed(2)).toLocaleString("en-US", { maximumFractionDigits: 2 });
 }
 
 function announceFailure(prefix: string, error: unknown): void { announce(error instanceof Error ? `${prefix}: ${error.message}` : `${prefix}: invalid data.`, true); }

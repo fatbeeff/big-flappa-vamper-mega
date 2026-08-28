@@ -8,7 +8,7 @@ import {
 } from "./fixtures/gmgn";
 
 test.describe("GMGN BSC Vamp extension shell", () => {
-  test("adds one Vamp Action to the Trenches left hover rail and opens the Launch Composer", async ({ extension }) => {
+  test("adds one Vamp Action immediately left of the Trenches play/Buy controls and opens the Launch Composer", async ({ extension }) => {
     const page = await extension.openGmgnTokenSurface(trenchesFixture, "https://gmgn.ai/?chain=bsc&tab=trenches");
 
     const card = page.getByTestId("trenches-card");
@@ -24,9 +24,11 @@ test.describe("GMGN BSC Vamp extension shell", () => {
     await buyActions.nth(1).click();
     expect(await page.evaluate(() => Reflect.get(window, "buyInvocations"))).toEqual(["first", "second"]);
     const leftRail = card.getByTestId("card-left-hover-rail");
-    const vamp = leftRail.getByRole("button", { name: "Vamp this token" });
+    const actionGroup = card.getByTestId("card-hover-actions");
+    const vamp = actionGroup.getByRole("button", { name: "Vamp this token" });
     await expect(vamp).toHaveCount(1);
     await expect(leftRail.getByRole("button", { name: "Pin token" })).toBeVisible();
+    expect(await vamp.evaluate((node) => node.nextElementSibling?.getAttribute("data-native-buy"))).toBe("first");
     await expect
       .poll(() =>
         vamp.locator("img").evaluate((image) => image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0),
@@ -139,15 +141,15 @@ test.describe("GMGN BSC Vamp extension shell", () => {
   test("preserves hidden hover-control geometry when the action becomes visible", async ({ extension }) => {
     const page = await extension.openGmgnTokenSurface(hiddenTrenchesFixture, "https://gmgn.ai/?chain=bsc&tab=trenches");
     const card = page.getByTestId("trenches-card");
-    const leftRail = card.getByTestId("card-left-hover-rail");
-    await expect(leftRail).toBeHidden();
+    const actionGroup = card.getByTestId("card-hover-actions");
+    await expect(actionGroup).toBeHidden();
 
     const initialSize = await page.locator("body").evaluate((body) => ({
       width: Number(body.dataset.initialCardWidth),
       height: Number(body.dataset.initialCardHeight),
     }));
     await card.hover();
-    await expect(leftRail.getByRole("button", { name: "Vamp this token" })).toBeVisible();
+    await expect(actionGroup.getByRole("button", { name: "Vamp this token" })).toBeVisible();
     await expect(card.getByRole("button", { name: "Buy" })).toHaveCount(2);
     expect(await card.evaluate((element) => ({
       width: element.getBoundingClientRect().width,
@@ -160,7 +162,7 @@ test.describe("GMGN BSC Vamp extension shell", () => {
 
     await expect(popup.getByRole("heading", { name: "Configuration" })).toBeVisible();
     await expect(popup.getByRole("heading", { name: "Extension ready" })).toBeVisible();
-    await expect(popup.getByText("Open a supported GMGN BSC token surface")).toBeVisible();
+    await expect(popup.getByText("Open a GMGN BSC token or a Robinhood token linked to Long.xyz or PONS")).toBeVisible();
     await expect(popup.getByRole("button", { name: /deploy|launch/i })).toHaveCount(0);
   });
 
@@ -185,7 +187,7 @@ test.describe("GMGN BSC Vamp extension shell", () => {
       card.setAttribute("data-token-address", "0x333");
       card.querySelector('[data-testid="card-left-hover-rail"]')?.append(document.createElement("span"));
     });
-    await expect(page.getByTestId("trenches-card").nth(1).getByRole("button", { name: "Vamp this token" })).toHaveCount(1);
+    await expect(page.getByTestId("trenches-card").nth(1).getByTestId("card-hover-actions").getByRole("button", { name: "Vamp this token" })).toHaveCount(1);
     expect(gmgnRequests).toEqual([]);
   });
 });

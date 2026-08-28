@@ -11,12 +11,12 @@ await rm(output, { recursive: true, force: true });
 await mkdir(output, { recursive: true });
 
 await build({
-  entryPoints: ["src/background.ts", "src/content.ts", "src/popup.ts", "src/route-observer.ts"],
+  entryPoints: ["src/background.ts", "src/content.ts", "src/discord-sidebar.ts", "src/long-relay.ts", "src/official-launch-prefill.ts", "src/popup.ts", "src/route-observer.ts"],
   outdir: output,
   bundle: true,
   format: "iife",
   target: "chrome120",
-  sourcemap: true,
+  sourcemap: process.env.VAMP_RELEASE_BUILD !== "1",
 });
 
 const manifest = JSON.parse(await readFile(path.join(root, "public", "manifest.json"), "utf8"));
@@ -30,6 +30,8 @@ await Promise.all([
   writeFile(path.join(output, "registry-config.json"), `${JSON.stringify({ endpoint: registryUrl })}\n`),
   cp(path.join(root, "public", "popup.html"), path.join(output, "popup.html")),
   cp(path.join(root, "public", "popup.css"), path.join(output, "popup.css")),
+  cp(path.join(root, "public", "discord-sidebar.css"), path.join(output, "discord-sidebar.css")),
+  cp(path.join(root, "public", "flap-tax-inspector.css"), path.join(output, "flap-tax-inspector.css")),
   cp(path.join(root, "registry", "payment-assets.json"), path.join(output, "payment-assets.json")),
   cp(path.join(root, "public", "assets"), path.join(output, "assets"), { recursive: true }),
 ]);

@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { decodeFunctionData, encodeAbiParameters, encodeEventTopics, parseAbiParameters, type Address, type Hex } from "viem";
+import { decodeErrorResult, decodeFunctionData, encodeAbiParameters, encodeEventTopics, parseAbiParameters, type Address, type Hex } from "viem";
 import {
   ERC20_QUOTE_NATIVE_FEE,
   FLAP_PORTAL_ABI,
@@ -8,6 +8,7 @@ import {
   buildNewTokenV6Params,
   encodeNewTokenV6,
   findTaxTokenSalt,
+  flapPortalErrorMessage,
   gmgnBscTokenUrl,
   predictTaxTokenAddress,
   tokenAddressFromReceipt,
@@ -105,6 +106,17 @@ test("extracts the event-derived token and builds the current canonical GMGN rou
   const token = tokenAddressFromReceipt({ status: "success", logs: [{ address: FLAP_PORTAL_ADDRESS, topics, data }] } as never);
   expect(token.toLowerCase()).toBe(CREATED.toLowerCase());
   expect(gmgnBscTokenUrl(token).toLowerCase()).toBe(`https://gmgn.ai/bsc/token/${CREATED}`.toLowerCase());
+});
+
+test("decodes the Portal custom error returned by the reported newTokenV6 revert", () => {
+  const revertData = "0xa7382e9b0000000000000000000000004704c7beb52bc8b9168e8a97459600d0769e13dc000000000000000000000000000000000000000000000000000000006a7b4797";
+  expect(decodeErrorResult({ abi: FLAP_PORTAL_ABI, data: revertData })).toMatchObject({
+    errorName: "RateLimitExceeded",
+    args: ["0x4704C7BEb52bC8b9168E8A97459600d0769E13Dc", 1_786_464_151n],
+  });
+  expect(flapPortalErrorMessage({ cause: { raw: revertData } })).toBe(
+    "Flap rate-limited the connected wallet after its last successful launch at 2026-08-11T16:02:31.000Z. Wait a few minutes, then deploy again. Your launch mechanics are preserved.",
+  );
 });
 
 test("uploads only public metadata and the image through Flap multipart GraphQL", async () => {

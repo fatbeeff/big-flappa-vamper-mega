@@ -9,7 +9,6 @@ export interface PaymentAsset {
   /** BNB Chain quote-token address. Native BNB uses the zero address. */
   address?: `0x${string}`;
   decimals?: number;
-  usePermit?: boolean;
   unavailableReason?: string;
 }
 
@@ -50,8 +49,12 @@ export async function loadPaymentAssetCache(): Promise<PaymentAssetCache> {
   const stored = (await chrome.storage.local.get(PAYMENT_ASSET_CACHE_KEY))[PAYMENT_ASSET_CACHE_KEY];
   try {
     if (!isRecord(stored)) throw new Error();
+    const manifest = validatePaymentAssetManifest(stored.manifest);
+    if (Date.parse(manifest.generatedAt) < Date.parse(BUNDLED_PAYMENT_ASSET_MANIFEST.generatedAt)) {
+      return { manifest: structuredClone(BUNDLED_PAYMENT_ASSET_MANIFEST), refreshedAt: null, lastRefreshError: null };
+    }
     return {
-      manifest: validatePaymentAssetManifest(stored.manifest),
+      manifest,
       refreshedAt: typeof stored.refreshedAt === "string" && isIsoDate(stored.refreshedAt) ? stored.refreshedAt : null,
       lastRefreshError: typeof stored.lastRefreshError === "string" ? stored.lastRefreshError : null,
     };
@@ -123,14 +126,13 @@ export async function loadPaymentAssetRegistryEndpoint(): Promise<string | null>
 
 function validateAsset(input: unknown, index: number): PaymentAsset {
   if (!isRecord(input)) throw new Error(`Payment asset ${index + 1} is invalid.`);
-  const exact = ["id", "symbol", "label", "category", "enabled", "address", "decimals", "usePermit", "unavailableReason"];
+  const exact = ["id", "symbol", "label", "category", "enabled", "address", "decimals", "unavailableReason"];
   if (Object.keys(input).some((key) => !exact.includes(key))) throw new Error(`Payment asset ${index + 1} has unsupported fields.`);
   if (!nonempty(input.id) || !nonempty(input.symbol) || !nonempty(input.label)) throw new Error(`Payment asset ${index + 1} is missing identity.`);
   if (input.category !== "crypto" && input.category !== "rwa") throw new Error(`Payment asset ${index + 1} has an invalid category.`);
   if (typeof input.enabled !== "boolean") throw new Error(`Payment asset ${index + 1} has an invalid availability state.`);
   if (input.address !== undefined && (typeof input.address !== "string" || !/^0x[0-9a-fA-F]{40}$/.test(input.address))) throw new Error(`Payment asset ${input.id} has an invalid BNB Chain address.`);
   if (input.decimals !== undefined && (!Number.isInteger(input.decimals) || Number(input.decimals) < 0 || Number(input.decimals) > 255)) throw new Error(`Payment asset ${input.id} has invalid decimals.`);
-  if (input.usePermit !== undefined && typeof input.usePermit !== "boolean") throw new Error(`Payment asset ${input.id} has an invalid permit flag.`);
   if (!input.enabled && !nonempty(input.unavailableReason)) throw new Error(`Disabled payment asset ${input.id} requires a reason.`);
   return {
     id: input.id,
@@ -140,7 +142,6 @@ function validateAsset(input: unknown, index: number): PaymentAsset {
     enabled: input.enabled,
     ...(typeof input.address === "string" ? { address: input.address as `0x${string}` } : {}),
     ...(Number.isInteger(input.decimals) ? { decimals: Number(input.decimals) } : {}),
-    ...(typeof input.usePermit === "boolean" ? { usePermit: input.usePermit } : {}),
     ...(nonempty(input.unavailableReason) ? { unavailableReason: input.unavailableReason } : {}),
   };
 }

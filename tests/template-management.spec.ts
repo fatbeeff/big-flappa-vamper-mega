@@ -1,4 +1,5 @@
 import { expect, test } from "./support/extension-harness";
+import { setRangeValue } from "./support/controls";
 
 test.describe("Launch Template configuration", () => {
   test("manages one Active Template and persists Operator templates across browser restarts", async ({ extension }) => {
@@ -17,15 +18,15 @@ test.describe("Launch Template configuration", () => {
 
     await popup.getByRole("button", { name: "Create template" }).click();
     await popup.getByLabel("Template name").fill("Fast launch");
-    await expect(popup.getByLabel("Payment asset")).toHaveRole("combobox");
-    await expect(popup.getByLabel("Payment asset").getByRole("option")).toHaveCount(8);
-    await popup.getByLabel("Payment asset").selectOption({ label: "BNB" });
-    await popup.getByLabel("Buy tax percentage").fill("3");
-    await popup.getByLabel("Sell tax percentage").fill("4");
-    await popup.getByLabel("Creator funds allocation basis points").fill("6000");
-    await popup.getByLabel("Burn allocation basis points").fill("1000");
-    await popup.getByLabel("Dividend allocation basis points").fill("1000");
-    await popup.getByLabel("Liquidity allocation basis points").fill("2000");
+    const assetPicker = popup.locator("#payment-asset-options");
+    await expect(assetPicker.getByRole("radio")).toHaveCount(17);
+    await assetPicker.getByRole("radio", { name: /^BNB/ }).check();
+    await setRangeValue(popup.getByLabel("Buy tax percentage"), "3");
+    await setRangeValue(popup.getByLabel("Sell tax percentage"), "4");
+    await setRangeValue(popup.getByLabel("Creator funds allocation basis points"), "6000");
+    await setRangeValue(popup.getByLabel("Burn allocation basis points"), "1000");
+    await setRangeValue(popup.getByLabel("Dividend allocation basis points"), "1000");
+    await setRangeValue(popup.getByLabel("Liquidity allocation basis points"), "2000");
     await popup.getByLabel("Creator purchase amount").fill("0.25");
     await popup.getByRole("button", { name: "Save template" }).click();
 
@@ -37,7 +38,7 @@ test.describe("Launch Template configuration", () => {
     await expect(fastLaunch.getByText("Active Template", { exact: true })).toBeVisible();
 
     await fastLaunch.getByRole("button", { name: "Edit Fast launch" }).click();
-    await popup.getByLabel("Sell tax percentage").fill("5");
+    await setRangeValue(popup.getByLabel("Sell tax percentage"), "5");
     await popup.getByRole("button", { name: "Save template" }).click();
     await expect(fastLaunch).toContainText("Sell tax 5%");
 
@@ -57,7 +58,7 @@ test.describe("Launch Template configuration", () => {
     await expect(mechanics.getByText("Fast launch", { exact: true })).toBeVisible();
     await expect(mechanics).toContainText("BNB · Buy tax 3% · Sell tax 5%");
     await mechanics.getByText("Edit Launch Mechanics").click();
-    await expect(mechanics.getByLabel("Payment quote asset")).toHaveCount(1);
+    await expect(mechanics.getByRole("radio", { name: /^BNB/ })).toBeChecked();
 
     await persisted.getByRole("button", { name: "Delete Fast launch" }).click();
     await expect(persisted).toHaveCount(0);
@@ -69,7 +70,7 @@ test.describe("Launch Template configuration", () => {
     const popup = await extension.openToolbarConfiguration();
     await popup.getByRole("button", { name: "Create template" }).click();
     await popup.getByLabel("Template name").fill("To replace");
-    await popup.getByLabel("Buy tax percentage").fill("1");
+    await setRangeValue(popup.getByLabel("Buy tax percentage"), "1");
     await popup.getByRole("button", { name: "Save template" }).click();
     const downloadPromise = popup.waitForEvent("download");
     await popup.getByRole("button", { name: "Export templates" }).click();
@@ -174,14 +175,8 @@ test.describe("Launch Template configuration", () => {
     const popup = await extension.openToolbarConfiguration();
     await popup.getByRole("button", { name: "Create template" }).click();
     await popup.getByLabel("Template name").fill("Invalid tax");
-    await popup.getByLabel("Buy tax percentage").fill("99");
-    await popup.getByLabel("Sell tax percentage").fill("1");
-    await popup.getByRole("button", { name: "Save template" }).click();
-    await expect(popup.getByRole("alert")).toContainText("0–10%");
-    await expect(popup.getByRole("article", { name: "Invalid tax template" })).toHaveCount(0);
-
-    await popup.getByLabel("Buy tax percentage").fill("0");
-    await popup.getByLabel("Sell tax percentage").fill("0");
+    await setRangeValue(popup.getByLabel("Buy tax percentage"), "0");
+    await setRangeValue(popup.getByLabel("Sell tax percentage"), "0");
     await popup.getByRole("button", { name: "Save template" }).click();
     await expect(popup.getByRole("alert")).toContainText("requires buy tax or sell tax above 0%");
 

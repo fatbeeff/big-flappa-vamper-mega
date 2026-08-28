@@ -6,28 +6,48 @@ const TOKEN_B = "0x2222222222222222222222222222222222222222";
 const TOKEN_C = "0x3333333333333333333333333333333333333333";
 const NAME_SELECTOR = "0x06fdde03";
 
-test("live Trenches relations inject in the image rail and capture address, image, and socials", async ({ extension }) => {
+test("live Trenches relations inject immediately left of play/Buy and capture address, image, and socials", async ({ extension }) => {
   const calls = await mockIdentity(extension);
   const page = await extension.openGmgnTokenSurface(liveDocument(liveCard(TOKEN_A, "Bat")), "https://gmgn.ai/?chain=bsc");
   const card = page.locator(`[href="/bsc/token/${TOKEN_A}"]`);
   const buyContainer = card.locator(".BuyButton-continer");
+  const buyActions = card.locator('[data-sentry-component="BuyButtons"]');
   const buy = buyContainer.getByRole("button", { name: "Buy" });
   const vamp = card.getByRole("button", { name: "Vamp this token" });
 
   await expect(vamp).toHaveCount(1);
-  await expect(card.locator(".token-image-shell > .token-blacklist-button")).toHaveCount(3);
-  expect(await vamp.evaluate((node) => node.parentElement?.classList.contains("token-image-shell"))).toBe(true);
+  await expect(card.locator(".token-image-shell > .token-blacklist-button")).toHaveCount(2);
+  expect(await vamp.evaluate((node) => node.parentElement?.getAttribute("data-sentry-component"))).toBe("BuyButtons");
+  expect(await vamp.evaluate((node) => node.nextElementSibling?.classList.contains("BuyButton-continer"))).toBe(true);
+  await expect(buyActions.getByRole("button", { name: "Vamp this token" })).toHaveCount(1);
+  expect(await vamp.evaluate((node) => {
+    const bounds = node.getBoundingClientRect();
+    const image = node.querySelector("img");
+    const imageBounds = image?.getBoundingClientRect();
+    const hit = document.elementFromPoint(bounds.left + bounds.width / 2, bounds.top + bounds.height / 2);
+    return {
+      position: getComputedStyle(node).position,
+      imageLoaded: image instanceof HTMLImageElement && image.complete && image.naturalWidth > 0,
+      imageInsideButton: Boolean(imageBounds
+        && imageBounds.left >= bounds.left
+        && imageBounds.right <= bounds.right
+        && imageBounds.top >= bounds.top
+        && imageBounds.bottom <= bounds.bottom),
+      hitTargetsVamp: hit?.closest('[data-vamp-action="true"]') === node,
+    };
+  })).toEqual({ position: "relative", imageLoaded: true, imageInsideButton: true, hitTargetsVamp: true });
   expect(await vamp.evaluate((node) => node.closest(".BuyButton-continer"))).toBeNull();
   await expect(buy).toHaveCount(1);
   await buy.click();
   expect(await page.evaluate(() => Reflect.get(window, "buyInvocations"))).toBe(1);
 
   await vamp.click();
+  expect(await page.evaluate(() => Reflect.get(window, "cardInvocations"))).toBe(0);
   const composer = page.getByRole("dialog", { name: "Launch Composer" });
   await expect(composer.getByLabel("Name")).toHaveValue("Bat Contract");
   await expect(composer.getByLabel("Symbol")).toHaveValue("BAT");
   await expect(composer.getByLabel("Image URL")).toHaveValue("https://images.gmgn.test/bat.png");
-  await expect(composer.getByLabel("X")).toHaveValue("https://x.com/bat");
+  await expect(composer.getByLabel("X", { exact: true })).toHaveValue("https://x.com/bat");
   await expect(composer.getByLabel("Website")).toHaveValue("https://bat.example/");
   await expect(composer.getByLabel("Telegram")).toHaveValue("https://t.me/bat");
   expect(calls.map(({ to }) => to.toLowerCase())).toEqual([TOKEN_A, TOKEN_A]);
@@ -78,19 +98,49 @@ test("live chart relations anchor Vamp below token favorite and capture header m
   await stack.getByRole("button", { name: "Vamp this token" }).click();
   const composer = page.getByRole("dialog", { name: "Launch Composer" });
   await expect(composer.getByLabel("Image URL")).toHaveValue("https://images.gmgn.test/chart.png");
-  await expect(composer.getByLabel("X")).toHaveValue("https://x.com/chart");
+  await expect(composer.getByLabel("X", { exact: true })).toHaveValue("https://x.com/chart");
   await expect(composer.getByLabel("Website")).toHaveValue("https://chart.example/");
   await expect(composer.getByLabel("Telegram")).toHaveValue("https://t.me/chart");
   expect(calls.map(({ to }) => to.toLowerCase())).toEqual([TOKEN_A, TOKEN_A]);
 });
 
+test("Long and PONS Robinhood cards hand off to their official wallet launch forms", async ({ extension }) => {
+  const calls = await mockRobinhoodIdentity(extension);
+  await extension.mockLongApi((route) => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ authenticity: true }),
+  }));
+  const page = await extension.openGmgnTokenSurface(
+    liveDocument([
+      robinhoodCard(TOKEN_A, "Long Coin", `https://app.long.xyz/tokens/${TOKEN_A}`),
+      robinhoodCard(TOKEN_B, "PONS Coin", `https://www.ponsfamily.com/launchpad/${TOKEN_B}`),
+      robinhoodCard(TOKEN_C, "Other Coin", "https://example.com/token"),
+    ].join("")),
+    "https://gmgn.ai/?chain=robinhood&tab=trenches",
+  );
+  await page.context().route("https://www.ponsfamily.com/**", (route) => route.fulfill({
+    contentType: "text/html",
+    body: '<!doctype html><html><body><h1>Launch token</h1><label>Name<input aria-label="Name"></label><label>Ticker<input aria-label="Ticker"></label></body></html>',
+  }));
+
+  const actions = page.getByRole("button", { name: "Vamp this token" });
+  await expect(actions).toHaveCount(2);
+  const [pons] = await Promise.all([
+    page.context().waitForEvent("page"),
+    page.locator(`[href="/robinhood/token/${TOKEN_B}"]`).getByRole("button", { name: "Vamp this token" }).click(),
+  ]);
+  await expect(pons.getByRole("textbox", { name: "Name", exact: true })).toHaveValue("Robinhood Contract");
+  await expect(pons.getByRole("textbox", { name: "Ticker", exact: true })).toHaveValue("HOOD");
+  expect(calls.map(({ to }) => to.toLowerCase())).toEqual([TOKEN_B, TOKEN_B]);
+});
+
 function liveDocument(cards: string): string {
-  return `<!doctype html><html><body><main>${cards}</main><script>window.buyInvocations=0</script></body></html>`;
+  return `<!doctype html><html><body><main>${cards}</main><script>window.buyInvocations=0;window.cardInvocations=0</script></body></html>`;
 }
 
 function liveCard(address: string, label: string): string {
   const slug = label.toLowerCase();
-  return `<div class="relative !w-full flex group/a" href="/bsc/token/${address}">
+  return `<div class="relative !w-full flex group/a" href="/bsc/token/${address}" onclick="window.cardInvocations += 1">
     <div class="token-image-shell w-full h-full overflow-hidden relative" style="width:40px;height:40px">
       <img class="w-full h-full object-cover" src="https://images.gmgn.test/${slug}.png" alt="${label}">
       <div class="token-blacklist-button" style="position:absolute;top:-6px;left:-6px;width:20px;height:20px">A</div>
@@ -100,8 +150,16 @@ function liveCard(address: string, label: string): string {
     <a aria-label="twitter" href="https://x.com/${slug}">X</a>
     <a aria-label="website" href="https://${slug}.example/">Web</a>
     <a aria-label="telegram" href="https://t.me/${slug}">TG</a>
-    <div class="BuyButton-continer"><button type="button" onclick="window.buyInvocations += 1">Buy</button></div>
+    <div class="buy-buttons" data-sentry-component="BuyButtons" style="display:flex;align-items:center;gap:4px">
+      <div class="BuyButton-continer"><button data-testid="quickbuy" type="button" style="height:35px" onclick="event.stopPropagation(); window.buyInvocations += 1">Buy</button></div>
+    </div>
   </div>`;
+}
+
+function robinhoodCard(address: string, label: string, platformUrl: string): string {
+  return liveCard(address, label)
+    .replaceAll(`/bsc/token/${address}`, `/robinhood/token/${address}`)
+    .replace("<h2>", `<a href="${platformUrl}">Launch platform</a><h2>`);
 }
 
 function liveChartDocument(): string {
@@ -125,6 +183,17 @@ async function mockIdentity(extension: ExtensionHarness): Promise<Array<{ to: st
     const call = request.params[0];
     calls.push(call);
     await rpcResult(route, request.id, abiString(call.data === NAME_SELECTOR ? "Bat Contract" : "BAT"));
+  });
+  return calls;
+}
+
+async function mockRobinhoodIdentity(extension: ExtensionHarness): Promise<Array<{ to: string; data: string }>> {
+  const calls: Array<{ to: string; data: string }> = [];
+  await extension.mockRobinhoodRpc(async (route) => {
+    const request = route.request().postDataJSON() as { id: number; params: [{ to: string; data: string }] };
+    const call = request.params[0];
+    calls.push(call);
+    await rpcResult(route, request.id, abiString(call.data === NAME_SELECTOR ? "Robinhood Contract" : "HOOD"));
   });
   return calls;
 }

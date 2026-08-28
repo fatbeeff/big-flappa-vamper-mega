@@ -7,7 +7,7 @@ import {
 import type { SourceTokenContractResolver } from "./source-token-contract-resolver";
 
 const FIXTURE_CARD_SELECTOR = '[data-testid="trenches-card"]';
-const LIVE_CARD_SELECTOR = '[href^="/bsc/token/"], [href^="https://gmgn.ai/bsc/token/"]';
+const LIVE_CARD_SELECTOR = '[href*="/bsc/token/"], [href*="/robinhood/token/"]';
 const LIVE_CHART_HEADER_SELECTOR = '[data-sentry-component="BaseInfoBar"]';
 const ADDRESS_PATTERN = /^0x[0-9a-f]{40}$/i;
 const METADATA_WAIT_TIMEOUT_MS = 5_000;
@@ -38,6 +38,7 @@ export function createGmgnSourceTokenAdapter(
       const translatedName = readText(contextRoot, "[data-token-translation-name]")
         || readText(contextRoot, "h1, h2");
       const hasSourceAddress = ADDRESS_PATTERN.test(sourceAddress);
+      const network = sourceNetwork(surface);
       if (!hasSourceAddress && !translatedName) return undefined;
 
       const captured = captureMetadata(contextRoot);
@@ -51,7 +52,7 @@ export function createGmgnSourceTokenAdapter(
       };
       return {
         context,
-        identity: hasSourceAddress ? contractResolver.resolve(sourceAddress) : undefined,
+        identity: hasSourceAddress ? contractResolver.resolve(sourceAddress, network) : undefined,
         enrichment: contextRoot.getAttribute("aria-busy") === "true"
           ? waitForMetadata(contextRoot, surface, sourceAddress)
           : undefined,
@@ -65,10 +66,17 @@ function resolveSourceAddress(surface: HTMLElement): string {
     ?? surface.dataset.tokenAddress;
   if (cardAddress && ADDRESS_PATTERN.test(cardAddress)) return cardAddress;
   const cardHref = surface.closest<HTMLElement>(LIVE_CARD_SELECTOR)?.getAttribute("href") ?? surface.getAttribute("href");
-  const hrefAddress = cardHref?.match(/\/bsc\/token\/(0x[0-9a-f]{40})(?:\/|$)/i)?.[1];
+  const hrefAddress = cardHref?.match(/\/(?:bsc|robinhood)\/token\/(0x[0-9a-f]{40})(?:\/|$)/i)?.[1];
   if (hrefAddress) return hrefAddress;
-  const routeAddress = new URL(location.href).pathname.match(/\/(?:token\/bsc|bsc\/token)\/(0x[0-9a-f]{40})(?:\/|$)/i)?.[1];
+  const routeAddress = new URL(location.href).pathname.match(/\/(?:token\/(?:bsc|robinhood)|(?:bsc|robinhood)\/token)\/(0x[0-9a-f]{40})(?:\/|$)/i)?.[1];
   return routeAddress ?? "";
+}
+
+function sourceNetwork(surface: HTMLElement): "bsc" | "robinhood" {
+  const href = surface.closest<HTMLElement>(LIVE_CARD_SELECTOR)?.getAttribute("href") ?? location.href;
+  return /\/(?:robinhood\/token|token\/robinhood)\//i.test(href) || new URL(location.href).searchParams.get("chain")?.toLowerCase() === "robinhood"
+    ? "robinhood"
+    : "bsc";
 }
 
 function captureMetadata(root: HTMLElement): LaunchMetadataEnrichment & { imageUrl: string; description: string; website: string; x: string; telegram: string } {

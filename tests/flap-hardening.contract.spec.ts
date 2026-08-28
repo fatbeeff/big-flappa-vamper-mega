@@ -29,6 +29,21 @@ test("readiness reserves a conservative gas budget before enabling deploy", asyn
   await expect(checkLaunchReadiness(request, deps)).rejects.toThrow(/conservative launch gas budget/i);
 });
 
+test("readiness fetches independent native-wallet inputs concurrently", async () => {
+  const deps = baseDependencies();
+  const started = new Set<string>();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  deps.publicClient.getChainId = async () => { started.add("chain"); await gate; return 56; };
+  deps.publicClient.getBalance = async () => { started.add("balance"); await gate; return 10n ** 18n; };
+  deps.publicClient.getGasPrice = async () => { started.add("gas"); await gate; return 1_000_000_000n; };
+
+  const readiness = checkLaunchReadiness(request, deps);
+  await expect.poll(() => started.size).toBe(3);
+  release();
+  await expect(readiness).resolves.toEqual({});
+});
+
 test("rejects local/private image targets, redirect escapes, non-images, and oversized images", async () => {
   for (const url of [
     "http://example.com/a.png", "https://localhost/a.png", "https://127.0.0.1/a.png", "https://169.254.169.254/a.png",

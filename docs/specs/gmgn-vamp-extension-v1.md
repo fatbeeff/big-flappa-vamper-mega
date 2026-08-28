@@ -1,5 +1,7 @@
 # Build the GMGN Vamp Extension v1
 
+> Wallet and destination-launch behavior in this original v1 specification is superseded by [multi-platform-wallet-launch.md](./multi-platform-wallet-launch.md): Flap uses an injected browser wallet, while Long.xyz and PONS use their official launch forms and live pairing lists.
+
 ## Problem Statement
 
 Operators discover newly created BSC tokens while scanning GMGN, but turning a promising Source Token into a configurable Flap launch requires leaving that workflow, manually copying identity and social metadata, recreating images and links, configuring tax-token mechanics, and submitting a separate launch. Existing quick-launch tools do not expose the required Crypto/RWA payment tokens and tax configuration, while rebuilding a discovery terminal would duplicate GMGN's strongest capabilities.
@@ -15,7 +17,7 @@ The extension supports dynamically discovered Crypto/RWA payment assets, non-vau
 ## User Stories
 
 1. As an Operator, I want to see the Vamp Action on a BSC Trenches token card, so that I can begin a launch without leaving my scanning workflow.
-2. As an Operator, I want the Vamp Action in the existing left-side hover action rail beside the token image, so that it joins GMGN's compact token actions without depending on optional Buy-button settings.
+2. As an Operator, I want the Vamp Action immediately left of the existing play/Buy control on a Trenches card, so that the launch action is visible with the control I already use without requiring GMGN's optional second Buy button.
 3. As an Operator, I want the Vamp Action to use the supplied Vamp icon, so that it is immediately recognizable without consuming space with a label.
 4. As an Operator, I want an accessible tooltip on the Vamp icon, so that its purpose is clear before I invoke it.
 5. As a keyboard-using Operator, I want the Vamp Action to be focusable and named, so that I can invoke it without a pointer.
@@ -55,7 +57,7 @@ The extension supports dynamically discovered Crypto/RWA payment assets, non-vau
 39. As an Operator, I want the creator purchase amount stored in templates, including zero, so that the initial purchase is repeatable.
 40. As an Operator, I want one Flap tax-token path rather than separate standard and tax modes, so that the composer remains predictable.
 41. As an Operator, I want Deploy to sign and broadcast immediately, so that there is no redundant product confirmation after reviewing the composer.
-42. As an Operator, I want Deploy disabled only for Flap-required invalid data, a missing Shared Deployment Wallet, or an unavailable payment asset, so that optional fields do not slow me down.
+42. As an Operator, I want Deploy disabled only for Flap-required invalid data, a missing or underfunded Shared Deployment Wallet, or an unavailable payment asset, so that optional fields do not slow me down.
 43. As an Operator, I want duplicate Deploy clicks suppressed while broadcasting, so that one action cannot submit the same launch twice.
 44. As an Operator, I want all edits preserved after a failed launch, so that retrying does not require reconstructing the token.
 45. As an Operator, I want a useful failure reason when one can be derived, so that I can correct the launch or connection before retrying.
@@ -84,11 +86,12 @@ The extension supports dynamically discovered Crypto/RWA payment assets, non-vau
 ## Implementation Decisions
 
 - Build a Chrome extension as the v1 delivery vehicle. A userscript is not the product boundary because the extension must own cross-origin asset access, persistent configuration, signing, multiple GMGN surfaces, and injected UI.
-- Support only GMGN's BSC Trenches surface and BSC token chart pages reached from it.
+- Support the v1 launch flow only on GMGN's BSC Trenches surface and BSC token chart pages reached from it.
 - Treat GMGN as a Token Surface rather than recreating discovery or charting. The Capture Bridge must remain replaceable so a later J7 integration does not contaminate the core Launch Composer.
-- Add the Vamp Action to a Trenches card's existing left-side hover action rail beside the token image. Do not replace, move, or depend on any Buy action, and do not alter card geometry.
+- Add the Vamp Action immediately left of a Trenches card's existing play/Buy control in the same hover-action group. Do not replace or move the native Buy action, do not require GMGN's optional second Buy button, and do not alter card geometry.
 - Add a persistent Vamp Action below the chart page's favorite control.
 - Use the supplied Vamp icon for both invocation points. Controls remain icon-only with an accessible name and GMGN-native tooltip.
+- Place Flip Tax directly beside the Vamp Action when the Source Token has a partial holder-tax allocation.
 - Detect GMGN client-side route transitions and dynamically inserted or recycled card rows without a per-card observer or network request.
 - Open one extension-owned centered modal from either Token Surface. Use a two-column desktop composition with Launch Metadata on the left and Launch Mechanics on the right.
 - Inherit GMGN's dark surfaces, typography density, borders, control states, and interaction rhythm. Restrained red Vamp accents are the only separate brand layer.
@@ -137,7 +140,7 @@ The extension supports dynamically discovered Crypto/RWA payment assets, non-vau
 ## Out of Scope
 
 - J7 stream integration
-- GMGN chains other than BSC
+- Launching from GMGN chains other than BSC
 - Destination chains other than BNB Chain
 - Rebuilding GMGN Trenches, token discovery, charting, trading, or market data
 - Standard non-tax Flap token launches

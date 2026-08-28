@@ -1,3 +1,3 @@
-# Use a shared deployment wallet
+# Use the Operator's injected deployment wallet
 
-The product is an internal tool for a small group of trusted Operators, all of whom are authorized keyholders for one Shared Deployment Wallet. Every launch will originate from that wallet for operational consistency, accepting shared-key attribution and compromise risk in exchange for a single deployer identity. The wallet owner provisions the key to Operators outside the product; each Operator imports it locally, and the key is not embedded in the distributed extension package.
+The extension delegates account access and transaction signing to the EIP-1193 wallet selected by the browser, such as MetaMask or Rabby. It does not import or persist private keys. This supersedes the original shared-key decision: wallet prompts add a deliberate confirmation step but remove extension key custody and work across Flap, PONS, and Long.xyz launch paths.

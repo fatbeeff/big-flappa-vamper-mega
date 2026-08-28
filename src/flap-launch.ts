@@ -1,18 +1,19 @@
 import {
   createPublicClient,
   createWalletClient,
+  custom,
   http,
   parseUnits,
   keccak256,
   stringToHex,
   type Address,
+  type Account,
   type Hash,
   type Hex,
   type PublicClient,
   type TransactionReceipt,
   type WalletClient,
 } from "viem";
-import { privateKeyToAccount } from "viem/accounts";
 import { bsc } from "viem/chains";
 import { DEFAULT_BSC_RPC_URL } from "./bsc-rpc";
 import {
@@ -32,7 +33,6 @@ import {
   type FlapLaunchRequest,
 } from "./flap-contract";
 import { getComposerPaymentAssets } from "./payment-assets";
-import { loadSharedDeploymentWallet } from "./shared-wallet";
 import { clearPendingFlapTransaction, persistPendingFlapTransaction, reconcilePendingFlapTransaction, type PendingTransactionStage } from "./pending-launch";
 import { gmgnBscTokenUrl } from "./flap-contract";
 
@@ -45,7 +45,7 @@ export const MAX_TOKEN_IMAGE_BYTES = 8 * 1024 * 1024;
 export type FlapLaunchDependencies = {
   publicClient: PublicClient;
   walletClient: WalletClient;
-  account: ReturnType<typeof privateKeyToAccount>;
+  account: Account;
   uploadMetadata(request: FlapLaunchRequest): Promise<string>;
   paymentAssets: Awaited<ReturnType<typeof getComposerPaymentAssets>>;
   findSalt(metadataCid: string): Promise<`0x${string}`>;
@@ -65,27 +65,31 @@ export async function checkLaunchReadiness(
     if (reconciliation.state === "confirmed-launch") return { navigationUrl: gmgnBscTokenUrl(reconciliation.tokenAddress) };
   }
   const paymentAsset = resolvePaymentAsset(request.mechanics.paymentAssetId, deps.paymentAssets);
-  const chainId = await deps.publicClient.getChainId();
+  const [chainId, nativeBalance, gasPrice] = await Promise.all([
+    deps.publicClient.getChainId(),
+    deps.publicClient.getBalance({ address: deps.account.address }),
+    deps.publicClient.getGasPrice(),
+  ]);
   if (chainId !== BNB_CHAIN_ID) throw new Error(`BSC RPC returned chain ${chainId}; expected BNB Chain 56.`);
   const quoteAmount = parseUnits(request.mechanics.creatorPurchaseAmount, paymentAsset.decimals);
-  const nativeBalance = await deps.publicClient.getBalance({ address: deps.account.address });
-  const gasPrice = await deps.publicClient.getGasPrice();
   if (paymentAsset.address === ZERO_ADDRESS) {
     const required = quoteAmount + CONSERVATIVE_LAUNCH_GAS_UNITS * gasPrice;
-    if (nativeBalance < required) throw new Error("Shared Deployment Wallet has insufficient BNB for the creator purchase and conservative launch gas budget.");
+    if (nativeBalance < required) throw new Error("Connected wallet has insufficient BNB for the creator purchase and conservative launch gas budget.");
     return {};
   }
-  const quoteConfig = await deps.publicClient.readContract({ address: FLAP_PORTAL_ADDRESS, abi: FLAP_PORTAL_ABI, functionName: "getQuoteTokenConfiguration", args: [paymentAsset.address] });
+  const [quoteConfig, quoteBalance, allowance] = await Promise.all([
+    deps.publicClient.readContract({ address: FLAP_PORTAL_ADDRESS, abi: FLAP_PORTAL_ABI, functionName: "getQuoteTokenConfiguration", args: [paymentAsset.address] }),
+    quoteAmount > 0n ? deps.publicClient.readContract({ address: paymentAsset.address, abi: ERC20_ABI, functionName: "balanceOf", args: [deps.account.address] }) : null,
+    quoteAmount > 0n ? deps.publicClient.readContract({ address: paymentAsset.address, abi: ERC20_ABI, functionName: "allowance", args: [deps.account.address, FLAP_PORTAL_ADDRESS] }) : null,
+  ]);
   if (quoteConfig.enabled !== 1) throw new Error(`${paymentAsset.symbol} is not currently enabled by the Flap Portal.`);
   let approvalStages = 0n;
   if (quoteAmount > 0n) {
-    const quoteBalance = await deps.publicClient.readContract({ address: paymentAsset.address, abi: ERC20_ABI, functionName: "balanceOf", args: [deps.account.address] });
-    if (quoteBalance < quoteAmount) throw new Error(`Shared Deployment Wallet has insufficient ${paymentAsset.symbol}.`);
-    const allowance = await deps.publicClient.readContract({ address: paymentAsset.address, abi: ERC20_ABI, functionName: "allowance", args: [deps.account.address, FLAP_PORTAL_ADDRESS] });
-    if (allowance < quoteAmount) approvalStages = allowance > 0n ? 2n : 1n;
+    if (quoteBalance === null || quoteBalance < quoteAmount) throw new Error(`Connected wallet has insufficient ${paymentAsset.symbol}.`);
+    if (allowance === null || allowance < quoteAmount) approvalStages = allowance !== null && allowance > 0n ? 2n : 1n;
   }
   const requiredNative = ERC20_QUOTE_NATIVE_FEE + (CONSERVATIVE_LAUNCH_GAS_UNITS + approvalStages * CONSERVATIVE_APPROVAL_GAS_UNITS) * gasPrice;
-  if (nativeBalance < requiredNative) throw new Error("Shared Deployment Wallet has insufficient BNB for the ERC-20 launch value and conservative launch/approval gas budget.");
+  if (nativeBalance < requiredNative) throw new Error("Connected wallet has insufficient BNB for the ERC-20 launch value and conservative launch/approval gas budget.");
   return {};
 }
 
@@ -106,26 +110,30 @@ export async function launchFlapTaxToken(
   deps.report("preflight", "Checking wallet, balance, payment asset, and Flap contractâ€¦");
 
   if (account.address.toLowerCase() !== (deps.walletClient.account?.address ?? account.address).toLowerCase()) {
-    throw new Error("Shared Deployment Wallet signer does not match the imported wallet.");
+    throw new Error("Connected wallet signer does not match the selected account.");
   }
-  const chainId = await deps.publicClient.getChainId();
+  const [chainId, nativeBalance] = await Promise.all([
+    deps.publicClient.getChainId(),
+    deps.publicClient.getBalance({ address: account.address }),
+  ]);
   if (chainId !== BNB_CHAIN_ID) throw new Error(`BSC RPC returned chain ${chainId}; expected BNB Chain 56.`);
 
   const quoteAmount = parseUnits(request.mechanics.creatorPurchaseAmount, paymentAsset.decimals);
-  const nativeBalance = await deps.publicClient.getBalance({ address: account.address });
   if (paymentAsset.address === ZERO_ADDRESS) {
-    if (nativeBalance < quoteAmount) throw new Error("Shared Deployment Wallet has insufficient BNB for the creator purchase.");
+    if (nativeBalance < quoteAmount) throw new Error("Connected wallet has insufficient BNB for the creator purchase.");
   } else {
-    const quoteConfig = await deps.publicClient.readContract({ address: FLAP_PORTAL_ADDRESS, abi: FLAP_PORTAL_ABI, functionName: "getQuoteTokenConfiguration", args: [paymentAsset.address] });
-    if (quoteConfig.enabled !== 1) throw new Error(`${paymentAsset.symbol} is not currently enabled by the Flap Portal.`);
-    if (quoteAmount > 0n) {
-      const quoteBalance = await deps.publicClient.readContract({
+    const [quoteConfig, quoteBalance] = await Promise.all([
+      deps.publicClient.readContract({ address: FLAP_PORTAL_ADDRESS, abi: FLAP_PORTAL_ABI, functionName: "getQuoteTokenConfiguration", args: [paymentAsset.address] }),
+      quoteAmount > 0n ? deps.publicClient.readContract({
         address: paymentAsset.address,
         abi: ERC20_ABI,
         functionName: "balanceOf",
         args: [account.address],
-      });
-      if (quoteBalance < quoteAmount) throw new Error(`Shared Deployment Wallet has insufficient ${paymentAsset.symbol}.`);
+      }) : null,
+    ]);
+    if (quoteConfig.enabled !== 1) throw new Error(`${paymentAsset.symbol} is not currently enabled by the Flap Portal.`);
+    if (quoteAmount > 0n) {
+      if (quoteBalance === null || quoteBalance < quoteAmount) throw new Error(`Connected wallet has insufficient ${paymentAsset.symbol}.`);
     }
   }
 
@@ -199,10 +207,12 @@ export async function launchFlapTaxToken(
     args: [params],
     value,
   });
-  const gas = await deps.publicClient.estimateContractGas({ ...simulation.request, account });
-  const gasPrice = await deps.publicClient.getGasPrice();
-  const launchNativeBalance = await deps.publicClient.getBalance({ address: account.address });
-  if (launchNativeBalance < value + gas * gasPrice) throw new Error("Shared Deployment Wallet has insufficient BNB for launch value and gas.");
+  const [gas, gasPrice, launchNativeBalance] = await Promise.all([
+    deps.publicClient.estimateContractGas({ ...simulation.request, account }),
+    deps.publicClient.getGasPrice(),
+    deps.publicClient.getBalance({ address: account.address }),
+  ]);
+  if (launchNativeBalance < value + gas * gasPrice) throw new Error("Connected wallet has insufficient BNB for launch value and gas.");
 
   deps.report("signing", "Signing and broadcasting the Flap launchâ€¦");
   const launchNonce = await deps.publicClient.getTransactionCount({ address: account.address, blockTag: "pending" });
@@ -222,12 +232,20 @@ export async function launchFlapTaxToken(
 export async function createProductionDependencies(
   request: FlapLaunchRequest,
   report: FlapLaunchDependencies["report"] = () => undefined,
+  provider?: { request(args: { method: string; params?: unknown }): Promise<unknown> },
 ): Promise<FlapLaunchDependencies> {
-  const wallet = await loadSharedDeploymentWallet();
-  if (!wallet) throw new Error("Import the Shared Deployment Wallet in extension configuration before deploying.");
-  const account = privateKeyToAccount(wallet.privateKey as `0x${string}`);
+  if (!provider) throw new Error("No injected EVM wallet was found. Install or enable MetaMask, Rabby, or another browser wallet.");
+  const accounts = await provider.request({ method: "eth_requestAccounts" });
+  const address = Array.isArray(accounts) && typeof accounts[0] === "string" ? accounts[0] : "";
+  if (!/^0x[0-9a-f]{40}$/i.test(address)) throw new Error("The injected wallet did not provide an EVM account.");
+  try { await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId: "0x38" }] }); }
+  catch (error) {
+    if (typeof error !== "object" || error === null || Reflect.get(error, "code") !== 4902) throw error;
+    await provider.request({ method: "wallet_addEthereumChain", params: [{ chainId: "0x38", chainName: "BNB Smart Chain", nativeCurrency: { name: "BNB", symbol: "BNB", decimals: 18 }, rpcUrls: [DEFAULT_BSC_RPC_URL], blockExplorerUrls: ["https://bscscan.com"] }] });
+  }
   const publicClient = createPublicClient({ chain: bsc, transport: http(DEFAULT_BSC_RPC_URL) });
-  const walletClient = createWalletClient({ account, chain: bsc, transport: http(DEFAULT_BSC_RPC_URL) });
+  const walletClient = createWalletClient({ account: address as `0x${string}`, chain: bsc, transport: custom(provider) });
+  const account = walletClient.account!;
   return {
     publicClient,
     walletClient,

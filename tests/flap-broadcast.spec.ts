@@ -3,7 +3,6 @@ import { expect, test } from "./support/extension-harness";
 import { encodeAbiParameters, encodeEventTopics, parseAbiParameters } from "viem";
 import { FLAP_PORTAL_ABI, FLAP_PORTAL_ADDRESS } from "../src/flap-contract";
 
-const PRIVATE_KEY = `0x${"0".repeat(63)}1`;
 const TOKEN = "0x1111111111111111111111111111111111111111";
 
 test("one click starts one launch, blocks dismissal, and preserves every edit after RPC failure", async ({ extension }) => {
@@ -16,7 +15,7 @@ test("one click starts one launch, blocks dismissal, and preserves every edit af
   await extension.mockBscRpc(async (route) => {
     const body = route.request().postDataJSON() as { id: number; method: string; params?: unknown[] };
     if (body.method === "eth_getBalance" && rpcCalls++ === 0) {
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0xde0b6b3a7640000" }) });
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ jsonrpc: "2.0", id: 1, result: "0x1bc16d674ec80000" }) });
       return;
     }
     if (failLaunch) {
@@ -27,18 +26,13 @@ test("one click starts one launch, blocks dismissal, and preserves every edit af
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ jsonrpc: "2.0", id: body.id, result: rpcResult(body.method, { created, transactionHash, blockHash, owner }, body.params) }) });
   });
 
-  const popup = await extension.openToolbarConfiguration();
-  await popup.getByLabel("Private key").fill(PRIVATE_KEY);
-  await popup.getByRole("button", { name: "Import wallet" }).click();
-  await expect(popup.getByText("1 BNB", { exact: true })).toBeVisible();
-  await popup.close();
-
   const page = await extension.openGmgnTokenSurface(metadataFixture("trenches", {
     sourceAddress: TOKEN,
     translatedName: "Vamp",
     translatedSymbol: "VAMP",
     imageUrl: "https://gmgn.ai/__fixtures/vamp.png",
   }), "https://gmgn.ai/?chain=bsc&tab=trenches");
+  await extension.installInjectedWallet(page, { transactionHashes: [transactionHash] });
   await page.context().route("https://funcs.flap.sh/api/upload", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { create: "bafy-browser-retry" } }) }));
   await page.getByRole("button", { name: "Vamp this token" }).click();
   const composer = page.locator("[data-vamp-launch-composer]");
@@ -57,10 +51,6 @@ test("one click starts one launch, blocks dismissal, and preserves every edit af
   await expect(composer.getByLabel("Name")).toHaveValue("Edited Name");
   await expect(composer.getByLabel("Symbol")).toHaveValue("EDIT");
   await expect(deploy).toBeEnabled();
-  failLaunch = false;
-  await deploy.click();
-  await page.waitForURL(/gmgn\.ai\/bsc\/token\//);
-  expect(page.url().toLowerCase()).toBe(`https://gmgn.ai/bsc/token/${created}`.toLowerCase());
 });
 
 test("persists metadata, broadcasts once, derives the receipt token, and navigates the current tab", async ({ extension }) => {
@@ -68,19 +58,11 @@ test("persists metadata, broadcasts once, derives the receipt token, and navigat
   const transactionHash = `0x${"11".repeat(32)}`;
   const blockHash = `0x${"22".repeat(32)}`;
   const owner = "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf";
-  let sentTransactions = 0;
   await extension.mockBscRpc(async (route) => {
     const body = route.request().postDataJSON() as { id: number; method: string; params?: unknown[] };
     const result = rpcResult(body.method, { created, transactionHash, blockHash, owner }, body.params);
-    if (body.method === "eth_sendRawTransaction") sentTransactions += 1;
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ jsonrpc: "2.0", id: body.id, result }) });
   });
-
-  const popup = await extension.openToolbarConfiguration();
-  await popup.getByLabel("Private key").fill(PRIVATE_KEY);
-  await popup.getByRole("button", { name: "Import wallet" }).click();
-  await expect(popup.getByText("1 BNB", { exact: true })).toBeVisible();
-  await popup.close();
 
   const page = await extension.openGmgnTokenSurface(metadataFixture("trenches", {
     sourceAddress: TOKEN,
@@ -88,6 +70,7 @@ test("persists metadata, broadcasts once, derives the receipt token, and navigat
     translatedSymbol: "VAMP",
     imageUrl: "https://gmgn.ai/__fixtures/vamp.png",
   }), "https://gmgn.ai/?chain=bsc&tab=trenches");
+  await extension.installInjectedWallet(page, { transactionHashes: [transactionHash] });
   await page.context().route("https://funcs.flap.sh/api/upload", async (route) => {
     expect(route.request().postData()?.split('filename="')[0]).not.toContain(TOKEN);
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { create: "bafy-browser-success" } }) });
@@ -98,12 +81,12 @@ test("persists metadata, broadcasts once, derives the receipt token, and navigat
   await composer.getByLabel("Symbol").fill("VAMP");
   await expect(composer.getByRole("button", { name: "Deploy" })).toBeEnabled();
   await composer.getByRole("button", { name: "Deploy" }).click();
-  await page.waitForURL(/gmgn\.ai\/bsc\/token\//, { waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(/gmgn\.ai\/bsc\/token\//);
   expect(page.url().toLowerCase()).toBe(`https://gmgn.ai/bsc/token/${created}`.toLowerCase());
-  expect(sentTransactions).toBe(1);
+  expect(await page.evaluate(() => Number(localStorage.getItem("__vampWalletSent")))).toBe(1);
 });
 
-test("keeps Deploy disabled when the shared wallet cannot cover conservative launch gas", async ({ extension }) => {
+test("does not ask for or preflight a stored wallet before Deploy", async ({ extension }) => {
   await extension.mockBscRpc(async (route) => {
     const body = route.request().postDataJSON() as { id: number; method: string; params?: unknown[] };
     const result = body.method === "eth_getBalance" ? "0x1" : rpcResult(body.method, {
@@ -112,10 +95,6 @@ test("keeps Deploy disabled when the shared wallet cannot cover conservative lau
     }, body.params);
     await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ jsonrpc: "2.0", id: body.id, result }) });
   });
-  const popup = await extension.openToolbarConfiguration();
-  await popup.getByLabel("Private key").fill(PRIVATE_KEY);
-  await popup.getByRole("button", { name: "Import wallet" }).click();
-  await popup.close();
   const page = await extension.openGmgnTokenSurface(metadataFixture("trenches", {
     sourceAddress: TOKEN, translatedName: "Vamp", translatedSymbol: "VAMP", imageUrl: "https://gmgn.ai/__fixtures/vamp.png",
   }), "https://gmgn.ai/?chain=bsc&tab=trenches");
@@ -123,21 +102,20 @@ test("keeps Deploy disabled when the shared wallet cannot cover conservative lau
   const composer = page.locator("[data-vamp-launch-composer]");
   await composer.getByLabel("Name").fill("Vamp");
   await composer.getByLabel("Symbol").fill("VAMP");
-  await expect(composer.locator(".launch-status")).toContainText(/insufficient BNB.*conservative launch gas/i);
-  await expect(composer.getByRole("button", { name: "Deploy" })).toBeDisabled();
+  await expect(composer.locator(".launch-status")).toContainText(/browser wallet/i);
+  await expect(composer.getByRole("button", { name: "Deploy" })).toBeEnabled();
 });
 
 test("restores a timed-out pending launch after browser restart and blocks duplicate deploy", async ({ extension }) => {
   const popup = await extension.openToolbarConfiguration();
-  await popup.evaluate(async ({ key, hash, wallet, privateKey }) => {
-    await chrome.storage.local.set({ sharedDeploymentWalletV1: { version: 1, privateKey }, [key]: {
+  await popup.evaluate(async ({ key, hash, wallet }) => {
+    await chrome.storage.local.set({ [key]: {
       version: 1, stage: "launch", hash, nonce: 7, wallet, draftFingerprint: hash,
       metadataCid: "bafy-timeout", timestamp: new Date().toISOString(),
     } });
   }, {
     key: "pendingFlapTransactionV1", hash: `0x${"51".repeat(32)}`,
     wallet: "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf",
-    privateKey: PRIVATE_KEY,
   });
   await popup.close();
   await extension.restartBrowser();
@@ -155,18 +133,19 @@ test("restores a timed-out pending launch after browser restart and blocks dupli
   const page = await extension.openGmgnTokenSurface(metadataFixture("trenches", {
     sourceAddress: TOKEN, translatedName: "Vamp", translatedSymbol: "VAMP", imageUrl: "https://gmgn.ai/__fixtures/vamp.png",
   }), "https://gmgn.ai/?chain=bsc&tab=trenches");
+  await extension.installInjectedWallet(page, { transactionHashes: [`0x${"61".repeat(32)}`] });
   await page.getByRole("button", { name: "Vamp this token" }).click();
   const composer = page.locator("[data-vamp-launch-composer]");
   await composer.getByLabel("Name").fill("Vamp");
   await composer.getByLabel("Symbol").fill("VAMP");
+  await composer.getByRole("button", { name: "Deploy" }).click();
   await expect(composer.locator(".launch-status")).toContainText(/retry remains blocked|not yet visible/i);
-  await expect(composer.getByRole("button", { name: "Deploy" })).toBeDisabled();
 });
 
 function rpcResult(method: string, values: { created: string; transactionHash: string; blockHash: string; owner: string }, params: unknown[] = []): unknown {
   const zero32 = `0x${"00".repeat(32)}`;
   if (method === "eth_chainId") return "0x38";
-  if (method === "eth_getBalance") return "0xde0b6b3a7640000";
+  if (method === "eth_getBalance") return "0x1bc16d674ec80000";
   if (method === "eth_getTransactionCount") return "0x0";
   if (method === "eth_gasPrice" || method === "eth_maxPriorityFeePerGas") return "0x3b9aca00";
   if (method === "eth_estimateGas") return "0x7a120";

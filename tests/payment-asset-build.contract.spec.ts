@@ -15,8 +15,12 @@ test("build emits the configured HTTPS registry and only its exact host permissi
     expect(JSON.parse(await readFile("dist/registry-config.json", "utf8"))).toEqual({ endpoint });
     expect(JSON.parse(await readFile("dist/manifest.json", "utf8")).host_permissions).toEqual([
       "https://bsc-dataseed.bnbchain.org/*",
+      "https://discord.com/*",
       "https://funcs.flap.sh/*",
       "https://gmgn.ai/*",
+      "https://app.long.xyz/*",
+      "https://www.ponsfamily.com/*",
+      "https://rpc.mainnet.chain.robinhood.com/*",
       "https://registry.mock.example/*",
     ]);
     expect(JSON.parse(await readFile("dist/manifest.json", "utf8")).optional_host_permissions).toEqual(["https://*/*"]);

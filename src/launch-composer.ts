@@ -17,14 +17,20 @@ import type {
 } from "./launch-context";
 import type { ResolvedSourceToken } from "./gmgn-source-token";
 import type { FlapLaunchRequest } from "./flap-contract";
+import type { FlapTaxInfo } from "./flap-tax-info";
 
 type MetadataField = keyof LaunchMetadataValues;
 
 export interface LaunchComposer {
-  open(invoker: HTMLButtonElement, sourceToken: ResolvedSourceToken): void;
+  open(invoker: HTMLButtonElement, sourceToken: ResolvedSourceToken, options?: LaunchComposerOpenOptions): void;
   dismiss(): void;
   readDraft(sourceAddress: string): LaunchDraftSnapshot | undefined;
 }
+
+export type LaunchComposerOpenOptions = {
+  kind: "flip-tax";
+  sourceTaxInfo: FlapTaxInfo;
+};
 
 export type LaunchDraftSnapshot = {
   sourceAddress: string;
@@ -35,6 +41,8 @@ export type LaunchDraftSnapshot = {
 };
 
 type LaunchDraft = LaunchDraftSnapshot & {
+  mode: "vamp" | "flip-tax";
+  sourceTaxInfo?: FlapTaxInfo;
   sourceImageSource: LaunchImageSource;
   touched: Set<MetadataField>;
   mechanicsValues?: LaunchMechanicsFormValues;
@@ -53,7 +61,7 @@ export function createLaunchComposer(): LaunchComposer {
       :host([hidden]) { display: none; }
       * { box-sizing: border-box; }
       .backdrop { position: absolute; inset: 0; display: grid; place-items: center; padding: 24px; background: rgba(4, 5, 7, .72); backdrop-filter: blur(3px); }
-      .dialog { width: min(920px, calc(100vw - 48px)); max-height: calc(100vh - 48px); overflow: auto; color: #f3f4f6; background: #15171a; border: 1px solid #32353b; border-radius: 14px; box-shadow: 0 24px 80px rgba(0,0,0,.55); font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+      .dialog { width: min(920px, calc(100vw - 48px)); max-height: calc(100vh - 48px); overflow: auto; color: #f3f4f6; background: #15171a; border: 1px solid #32353b; border-radius: 14px; box-shadow: 0 24px 80px rgba(0,0,0,.55); font-family: ui-sans-serif, system-ui, sans-serif; }
       header { display: flex; align-items: center; justify-content: space-between; padding: 16px 18px; border-bottom: 1px solid #2b2e33; }
       header div { display: flex; align-items: center; gap: 10px; }
       header img { width: 28px; height: 28px; border-radius: 7px; }
@@ -62,7 +70,7 @@ export function createLaunchComposer(): LaunchComposer {
       button:disabled { cursor: not-allowed; opacity: .45; }
       button:focus-visible, input:focus-visible, textarea:focus-visible { outline: 2px solid #ff5964; outline-offset: 2px; }
       .close { display: grid; place-items: center; width: 32px; height: 32px; }
-      .columns { display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(260px, .65fr); gap: 14px; padding: 18px; }
+      .columns { display: grid; grid-template-columns: minmax(0, 1.1fr) minmax(340px, .9fr); gap: 14px; padding: 18px; }
       section { min-height: 150px; padding: 16px; background: #1b1d21; border: 1px solid #2b2e33; border-radius: 10px; }
       h2 { margin: 0 0 12px; font-size: 14px; }
       p { margin: 0; color: #989da6; font-size: 12px; line-height: 1.5; }
@@ -82,25 +90,62 @@ export function createLaunchComposer(): LaunchComposer {
       [role="status"] { min-height: 18px; margin-bottom: 10px; color: #b0b4bc; }
       [data-active-template] { display: grid; gap: 8px; }
       .template-kicker { color: #989da6; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+      .flip-tax-note { padding: 9px 10px; color: #ffd4d6; background: #36171c; border-radius: 8px; line-height: 1.45; }
       .mechanics-summary { color: #d8dbe0; line-height: 1.5; }
+      .creator-purchase-picker { display: grid; gap: 8px; min-width: 0; margin: 3px 0 2px; padding: 11px; background: #17191d; border: 1px solid #34373d; border-radius: 9px; }
+      .creator-purchase-picker[hidden] { display: none; }
+      .creator-purchase-picker legend { padding: 0 5px; color: #f3f4f6; font-size: 12px; font-weight: 700; }
+      .creator-purchase-presets { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 5px; }
+      .creator-purchase-presets button { min-width: 0; padding: 0 4px; color: #b8bbc2; font-size: 11px; font-variant-numeric: tabular-nums; }
+      .creator-purchase-presets button[aria-pressed="true"] { color: #fff; background: #71222c; border-color: #d94752; }
+      .creator-purchase-exact { grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; }
+      .creator-purchase-exact span { color: #b8bbc2; white-space: nowrap; }
+      .creator-purchase-exact input { min-width: 0; font-variant-numeric: tabular-nums; }
+      .creator-purchase-help { color: #858a94; font-size: 10px; }
       details { border-top: 1px solid #30333a; padding-top: 10px; }
       summary { color: #f3f4f6; cursor: pointer; font-size: 12px; font-weight: 600; }
-      .mechanics-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
-      .mechanics-fields label.wide, .allocation, .mechanics-status, .template-save { grid-column: 1 / -1; }
-      select { width: 100%; color: #f3f4f6; background: #141619; border: 1px solid #383b42; border-radius: 7px; padding: 9px 10px; font: 13px/1.35 inherit; }
-      select:focus-visible { outline: 2px solid #ff5964; outline-offset: 2px; }
+      .mechanics-fields { display: grid; gap: 14px; margin-top: 14px; }
+      .mechanics-group { display: grid; gap: 9px; min-width: 0; padding: 0; border: 0; }
+      .mechanics-group legend, .allocation-heading span { padding: 0; color: #d8dbe0; font-size: 12px; font-weight: 650; }
+      .asset-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+      .asset-option { position: relative; display: grid; grid-template-columns: 30px minmax(0, 1fr); align-items: center; gap: 8px; min-height: 48px; padding: 7px; color: #d8dbe0; background: #17191d; border: 1px solid #34373d; border-radius: 9px; cursor: pointer; }
+      .asset-option:hover { border-color: #5a5e67; background: #1e2025; }
+      .asset-option:has(input:checked) { color: #fff; background: #32191d; border-color: #c33a48; }
+      .asset-option:has(input:focus-visible) { outline: 2px solid #ff5964; outline-offset: 2px; }
+      .asset-option:has(input:disabled) { cursor: not-allowed; opacity: .42; }
+      .asset-option input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+      .asset-mark { display: grid; place-items: center; width: 30px; height: 30px; color: #fff; background: #454953; border-radius: 50%; font-size: 9px; font-weight: 800; letter-spacing: -.01em; }
+      .asset-option[data-category="crypto"] .asset-mark { background: #8f6915; }
+      .asset-option[data-category="rwa"] .asset-mark { background: #394f74; }
+      .asset-copy { min-width: 0; }
+      .asset-symbol, .asset-label { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .asset-symbol { font-size: 11px; font-weight: 750; }
+      .asset-label { margin-top: 2px; color: #9da2ac; font-size: 10px; }
+      .slider-stack { display: grid; gap: 12px; }
+      .slider-field { display: grid; gap: 6px; }
+      .slider-label, .allocation-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+      .slider-label output, .allocation-heading output { color: #fff; font-variant-numeric: tabular-nums; font-weight: 700; }
+      input[type="range"] { height: 18px; padding: 0; border: 0; background: transparent; accent-color: #d94752; cursor: ew-resize; }
+      input[type="range"]::-webkit-slider-runnable-track { height: 4px; background: linear-gradient(90deg, #c33a48 var(--range-progress, 0%), #3a3d44 var(--range-progress, 0%)); border-radius: 2px; }
+      input[type="range"]::-webkit-slider-thumb { width: 16px; height: 16px; margin-top: -6px; background: #f5f5f6; border: 3px solid #c33a48; border-radius: 50%; appearance: none; }
+      .allocation-heading output.invalid { color: #ff8c94; }
+      .allocation, .mechanics-status, .template-save { grid-column: 1 / -1; }
       .field-error { min-height: 0; margin: 0; color: #ff8c94; font-size: 11px; }
       .mechanics-status { min-height: 18px; margin: 0; }
       .mechanics-status.invalid { color: #ff8c94; }
       .template-save { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; padding-top: 4px; }
       .template-save[hidden] { display: none; }
       .save-template { width: 100%; }
-      .allocation-note { grid-column: 1 / -1; color: #989da6; }
+      .precision-field { display: grid; gap: 6px; }
       footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 0 18px 18px; }
       .launch-status { min-height: 18px; margin: 0; }
       .launch-status.error { color: #ff8c94; }
-      .deploy { min-width: 150px; color: #fff; background: #8f1d29; border-color: #c33a48; font-weight: 700; }
-      @media (max-width: 700px) { .columns, .fields { grid-template-columns: 1fr; } .wide, .image-row { grid-column: auto; } }
+      .deploy { min-width: 220px; min-height: 56px; padding: 0 28px; color: #fff; background: #a52331; border-color: #e05260; font-size: 15px; font-weight: 800; letter-spacing: -.01em; transition: background-color 160ms ease-out, box-shadow 160ms ease-out, transform 160ms ease-out; }
+      .deploy:not(:disabled) { box-shadow: 0 10px 30px rgba(217, 71, 82, .42), inset 0 1px 0 rgba(255,255,255,.16); }
+      .deploy:not(:disabled):hover { background: #bd2d3c; box-shadow: 0 13px 36px rgba(217, 71, 82, .52), inset 0 1px 0 rgba(255,255,255,.2); transform: translateY(-1px); }
+      .deploy:not(:disabled):active { background: #8f1d29; box-shadow: 0 5px 18px rgba(217, 71, 82, .34); transform: translateY(1px); }
+      .deploy:disabled { box-shadow: none; }
+      @media (max-width: 700px) { .backdrop { padding: 10px; } .dialog { width: calc(100vw - 20px); max-height: calc(100vh - 20px); } .columns, .fields { grid-template-columns: 1fr; } .wide, .image-row { grid-column: auto; } footer { grid-template-columns: 1fr; } .deploy { width: 100%; } }
     </style>
     <div class="backdrop">
       <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="vamp-launch-composer-title">
@@ -121,7 +166,7 @@ export function createLaunchComposer(): LaunchComposer {
               <label>X<input name="x" type="url" autocomplete="off"></label>
               <label>Telegram<input name="telegram" type="url" autocomplete="off"></label>
               <div class="image-row">
-                <img class="preview" alt="Token image preview">
+                <img class="preview" src="${chrome.runtime.getURL("assets/vamp-128.png")}" alt="Token image preview" hidden>
                 <div>
                   <label>Image URL<input name="imageUrl" type="url" autocomplete="off"></label>
                   <div class="image-actions">
@@ -141,6 +186,9 @@ export function createLaunchComposer(): LaunchComposer {
   document.body.append(host);
 
   const closeButton = shadow.querySelector<HTMLButtonElement>(".close")!;
+  const composerTitle = shadow.querySelector<HTMLElement>("#vamp-launch-composer-title")!;
+  const composerIcon = shadow.querySelector<HTMLImageElement>("header img")!;
+  const mechanicsHeading = shadow.querySelector<HTMLElement>("#vamp-mechanics-heading")!;
   const status = shadow.querySelector<HTMLElement>('[role="status"]')!;
   const translation = shadow.querySelector<HTMLElement>(".translation")!;
   const preview = shadow.querySelector<HTMLImageElement>(".preview")!;
@@ -160,8 +208,6 @@ export function createLaunchComposer(): LaunchComposer {
   let ephemeralDraftSequence = 0;
   let launchInFlight = false;
   let launchRequestId: string | undefined;
-  let readinessGeneration = 0;
-  let readinessTimer: ReturnType<typeof setTimeout> | undefined;
   const drafts = new Map<string, LaunchDraft>();
 
   function setImageUrl(value: string): void {
@@ -316,11 +362,13 @@ export function createLaunchComposer(): LaunchComposer {
   });
 
   return {
-    open(button, sourceToken) {
+    open(button, sourceToken, options) {
       const { context, identity, enrichment } = sourceToken;
+      const mode = options?.kind ?? "vamp";
       invoker = button;
       imageStatus.textContent = "";
-      const draftKey = context.sourceAddress || `ephemeral:${++ephemeralDraftSequence}`;
+      const sourceKey = context.sourceAddress || `ephemeral:${++ephemeralDraftSequence}`;
+      const draftKey = mode === "flip-tax" ? `flip-tax:${sourceKey}` : sourceKey;
       let draft = drafts.get(draftKey);
       if (!draft) {
         const sourceImageSource = imageSourceFromUrl(context.imageUrl);
@@ -329,6 +377,8 @@ export function createLaunchComposer(): LaunchComposer {
           metadata: metadataFromContext(context),
           imageSource: sourceImageSource,
           sourceImageSource,
+          mode,
+          ...(options ? { sourceTaxInfo: structuredClone(options.sourceTaxInfo) } : {}),
           touched: new Set(),
           mechanics: null,
           mechanicsValidation: { valid: false, errors: {} },
@@ -336,8 +386,13 @@ export function createLaunchComposer(): LaunchComposer {
         drafts.set(draftKey, draft);
       } else {
         mergeMissingCapturedValues(draft, context);
+        if (options) draft.sourceTaxInfo = structuredClone(options.sourceTaxInfo);
       }
       activeDraft = draft;
+      host.dataset.composerMode = mode;
+      composerTitle.textContent = mode === "flip-tax" ? "Flip Tax Composer" : "Launch Composer";
+      composerIcon.src = chrome.runtime.getURL(mode === "flip-tax" ? "assets/flip-tax.png" : "assets/vamp-128.png");
+      mechanicsHeading.textContent = mode === "flip-tax" ? "Corrected Launch Mechanics" : "Launch Mechanics";
       renderDraft(draft);
       updateDeployState();
       restoreButton.disabled = draft.sourceImageSource.kind === "none";
@@ -349,7 +404,9 @@ export function createLaunchComposer(): LaunchComposer {
         ? `GMGN translation: ${translatedIdentity}${context.translatedSymbol ? ")" : ""}`
         : "";
       translation.hidden = !translation.textContent;
-      status.textContent = identity ? "Loading original token identity…" : "Captured metadata ready to edit.";
+      status.textContent = identity
+        ? mode === "flip-tax" ? "Loading Source Token identity for a 100% holder-tax correction…" : "Loading Source Token identity…"
+        : mode === "flip-tax" ? "Captured metadata ready. Holder allocation will be corrected to 100%." : "Captured metadata ready to edit.";
       host.hidden = false;
       closeButton.focus();
 
@@ -366,11 +423,15 @@ export function createLaunchComposer(): LaunchComposer {
             draft.metadata.originalSymbol = resolvedIdentity.symbol;
             setField("originalSymbol", resolvedIdentity.symbol);
           }
-          status.textContent = "Authoritative token identity loaded.";
+          status.textContent = draft.mode === "flip-tax"
+            ? "Authoritative identity loaded. Holder allocation correction ready."
+            : "Authoritative token identity loaded.";
         },
         () => {
           if (sequence !== openSequence || draft !== activeDraft || host.hidden) return;
-          status.textContent = "Original token identity could not be loaded. Captured metadata is unchanged.";
+          status.textContent = draft.mode === "flip-tax"
+            ? "Source Token identity could not be loaded. Captured metadata and the tax correction are unchanged."
+            : "Source Token identity could not be loaded. Captured metadata is unchanged.";
         },
       );
       enrichment?.then(
@@ -410,8 +471,6 @@ export function createLaunchComposer(): LaunchComposer {
   };
 
   function updateDeployState(): void {
-    const generation = ++readinessGeneration;
-    if (readinessTimer) clearTimeout(readinessTimer);
     const draft = activeDraft;
     const metadataValid = !!draft?.metadata.originalName.trim() && !!draft.metadata.originalSymbol.trim() && draft.imageSource.kind !== "none";
     const valid = !!draft?.mechanicsValidation.valid && !!draft.mechanics && metadataValid;
@@ -422,29 +481,8 @@ export function createLaunchComposer(): LaunchComposer {
       launchStatus.textContent = "Complete Flap-required metadata and mechanics to deploy.";
       return;
     }
-    launchStatus.textContent = "Checking Shared Deployment Wallet, balances, and payment assetâ€¦";
-    const launch: FlapLaunchRequest = { metadata: { ...draft.metadata }, imageSource: { ...draft.imageSource }, mechanics: structuredClone(draft.mechanics) };
-    readinessTimer = setTimeout(() => {
-      chrome.runtime.sendMessage({ type: "vamp:launch-readiness", launch }, (response: unknown) => {
-        if (generation !== readinessGeneration || host.hidden || launchInFlight) return;
-        const runtimeError = chrome.runtime.lastError;
-        const ok = !runtimeError && typeof response === "object" && response !== null && Reflect.get(response, "ok") === true;
-        if (ok) {
-          const navigationUrl = Reflect.get(response as object, "navigationUrl");
-          if (typeof navigationUrl === "string") {
-            launchStatus.textContent = "Confirmed launch found. Returning to GMGNâ€¦";
-            window.location.assign(navigationUrl);
-            return;
-          }
-          deployButton.disabled = false;
-          launchStatus.textContent = "Ready to sign and broadcast with the Shared Deployment Wallet.";
-          return;
-        }
-        const error = runtimeError?.message ?? (typeof response === "object" && response !== null ? Reflect.get(response, "error") : undefined);
-        launchStatus.textContent = typeof error === "string" ? error : "Launch readiness could not be verified.";
-        launchStatus.classList.add("error");
-      });
-    }, 120);
+    deployButton.disabled = false;
+    launchStatus.textContent = "Deploy will open your browser wallet to connect and sign.";
   }
 
   function renderDraft(draft: LaunchDraft): void {
@@ -455,11 +493,37 @@ export function createLaunchComposer(): LaunchComposer {
 
   async function renderActiveTemplate(sequence: number): Promise<void> {
     // Both reads are extension-local. Opening never waits for the registry.
-    const [template, assets] = await Promise.all([getActiveTemplate(), getComposerPaymentAssets()]);
+    const [template, cachedAssets] = await Promise.all([getActiveTemplate(), getComposerPaymentAssets()]);
     const draft = activeDraft;
     if (sequence !== openSequence || host.hidden || !draft) return;
-    if (!draft.mechanicsValues) draft.mechanicsValues = mechanicsFormValues(template.mechanics);
-    draft.activeTemplateName ??= template.name;
+    const assets = [...cachedAssets];
+    if (!draft.mechanicsValues) {
+      draft.mechanicsValues = mechanicsFormValues(template.mechanics);
+      if (draft.mode === "flip-tax" && draft.sourceTaxInfo) {
+        draft.mechanicsValues.buyTaxPercent = bpsPercent(draft.sourceTaxInfo.buyTaxBps);
+        draft.mechanicsValues.sellTaxPercent = bpsPercent(draft.sourceTaxInfo.sellTaxBps);
+        draft.mechanicsValues.creatorFundsBps = "0";
+        draft.mechanicsValues.burnBps = "0";
+        draft.mechanicsValues.dividendBps = "10000";
+        draft.mechanicsValues.liquidityBps = "0";
+        const quoteToken = draft.sourceTaxInfo.quoteToken.toLowerCase();
+        let sourceAsset = assets.find((asset) => asset.address?.toLowerCase() === quoteToken);
+        if (!sourceAsset) {
+          sourceAsset = {
+            id: `source-quote-${quoteToken}`,
+            symbol: draft.sourceTaxInfo.quoteSymbol,
+            label: "Source Token payment asset",
+            category: "crypto",
+            enabled: false,
+            address: draft.sourceTaxInfo.quoteToken as `0x${string}`,
+            unavailableReason: "The Source Token payment asset is not in the current registry. Refresh the Asset Registry or choose a supported asset deliberately.",
+          };
+          assets.unshift(sourceAsset);
+        }
+        draft.mechanicsValues.paymentAssetId = sourceAsset.id;
+      }
+    }
+    draft.activeTemplateName ??= draft.mode === "flip-tax" ? "100% holder allocation" : template.name;
     draft.paymentAssets = assets;
     renderMechanicsEditor(draft);
   }
@@ -467,23 +531,35 @@ export function createLaunchComposer(): LaunchComposer {
   function renderMechanicsEditor(draft: LaunchDraft): void {
     const container = shadow.querySelector<HTMLElement>("[data-active-template]")!;
     container.innerHTML = `
-      <span class="template-kicker">Active Template</span>
+      <span class="template-kicker"></span>
       <strong data-template-name></strong>
+      <p class="flip-tax-note" hidden></p>
       <p class="mechanics-summary" data-mechanics-summary></p>
+      <fieldset class="creator-purchase-picker" hidden>
+        <legend>Creator purchase amount</legend>
+        <div class="creator-purchase-presets">
+          ${["0", "0.1", "0.25", "0.5", "1"].map((amount) => `<button type="button" data-creator-purchase="${amount}" aria-pressed="false">${amount}</button>`).join("")}
+        </div>
+        <label class="creator-purchase-exact"><input data-creator-purchase-input inputmode="decimal" aria-label="Exact creator purchase amount" aria-describedby="creator-purchase-help"><span data-creator-purchase-symbol></span></label>
+        <p class="creator-purchase-help" id="creator-purchase-help">Spent from your connected browser wallet when you deploy.</p>
+      </fieldset>
       <details>
         <summary>Edit Launch Mechanics</summary>
         <div class="mechanics-fields">
-          <label class="wide">Payment asset<select name="paymentAssetId" aria-label="Payment quote asset" aria-describedby="paymentAssetId-error"></select><p class="field-error" id="paymentAssetId-error"></p></label>
-          <label>Buy tax (%)<input name="buyTaxPercent" type="number" min="0" max="10" step="0.01" aria-label="Buy fee rate" aria-describedby="buyTaxPercent-error tax-error"><p class="field-error" id="buyTaxPercent-error"></p></label>
-          <label>Sell tax (%)<input name="sellTaxPercent" type="number" min="0" max="10" step="0.01" aria-label="Sell fee rate" aria-describedby="sellTaxPercent-error tax-error"><p class="field-error" id="sellTaxPercent-error"></p></label>
+          <fieldset class="mechanics-group"><legend>Payment asset</legend><div class="asset-picker" data-payment-assets></div><p class="field-error" id="paymentAssetId-error"></p></fieldset>
+          <fieldset class="mechanics-group"><legend>Trading tax</legend><div class="slider-stack">
+            ${rangeControl("buyTaxPercent", "Buy tax", "Buy fee rate", 0, 10, 0.01, "buyTaxPercent-error tax-error")}
+            ${rangeControl("sellTaxPercent", "Sell tax", "Sell fee rate", 0, 10, 0.01, "sellTaxPercent-error tax-error")}
+          </div></fieldset>
           <p class="field-error allocation" id="tax-error"></p>
-          <label>Creator funds (bps)<input name="creatorFundsBps" type="number" min="0" max="10000" step="1" aria-describedby="creatorFundsBps-error allocation-error"><p class="field-error" id="creatorFundsBps-error"></p></label>
-          <label>Burn (bps)<input name="burnBps" type="number" min="0" max="10000" step="1" aria-describedby="burnBps-error allocation-error"><p class="field-error" id="burnBps-error"></p></label>
-          <label>Dividend (bps)<input name="dividendBps" type="number" min="0" max="10000" step="1" aria-describedby="dividendBps-error allocation-error"><p class="field-error" id="dividendBps-error"></p></label>
-          <label>Liquidity (bps)<input name="liquidityBps" type="number" min="0" max="10000" step="1" aria-describedby="liquidityBps-error allocation-error"><p class="field-error" id="liquidityBps-error"></p></label>
-          <p class="allocation-note">Standard non-vault allocation must total 10,000 bps.</p>
+          <fieldset class="mechanics-group"><legend class="allocation-heading"><span>Tax allocation</span><output data-allocation-total>100% assigned</output></legend><div class="slider-stack">
+            ${rangeControl("creatorFundsBps", "Creator funds", "Creator funds (bps)", 0, 10000, 1, "creatorFundsBps-error allocation-error")}
+            ${rangeControl("burnBps", "Burn", "Burn (bps)", 0, 10000, 1, "burnBps-error allocation-error")}
+            ${rangeControl("dividendBps", "Holders", "Dividend (bps)", 0, 10000, 1, "dividendBps-error allocation-error")}
+            ${rangeControl("liquidityBps", "Liquidity", "Liquidity (bps)", 0, 10000, 1, "liquidityBps-error allocation-error")}
+          </div></fieldset>
           <p class="field-error allocation" id="allocation-error"></p>
-          <label class="wide">Creator purchase<input name="creatorPurchaseAmount" inputmode="decimal" aria-describedby="creatorPurchaseAmount-error"><p class="field-error" id="creatorPurchaseAmount-error"></p></label>
+          <label class="precision-field">Creator purchase amount<input name="creatorPurchaseAmount" inputmode="decimal" aria-describedby="creatorPurchaseAmount-error"><p class="field-error" id="creatorPurchaseAmount-error"></p></label>
           <p class="mechanics-status" role="status" aria-live="polite"></p>
           <button class="save-template" type="button">Save as Template</button>
           <form class="template-save" hidden>
@@ -493,28 +569,26 @@ export function createLaunchComposer(): LaunchComposer {
           </form>
         </div>
       </details>`;
+    container.querySelector<HTMLElement>(".template-kicker")!.textContent = draft.mode === "flip-tax" ? "Flip Tax correction" : "Active Template";
     container.querySelector<HTMLElement>("[data-template-name]")!.textContent = draft.activeTemplateName ?? "Active Template";
+    const correctionNote = container.querySelector<HTMLElement>(".flip-tax-note")!;
+    if (draft.mode === "flip-tax" && draft.sourceTaxInfo) {
+      correctionNote.hidden = false;
+      correctionNote.textContent = `Holder allocation ${bpsPercent(draft.sourceTaxInfo.dividendBps)}% → 100%. Source buy ${bpsPercent(draft.sourceTaxInfo.buyTaxBps)}% · sell ${bpsPercent(draft.sourceTaxInfo.sellTaxBps)}% preserved.`;
+      container.querySelector<HTMLElement>("summary")!.textContent = "Review corrected mechanics";
+    }
 
     const values = draft.mechanicsValues!;
     const assets = draft.paymentAssets ?? [];
-    const select = container.querySelector<HTMLSelectElement>('select[name="paymentAssetId"]')!;
-    for (const category of ["crypto", "rwa"] as const) {
-      const group = document.createElement("optgroup");
-      group.label = category === "crypto" ? "Crypto" : "RWA";
-      for (const asset of assets.filter((item) => item.category === category)) {
-        const identity = asset.symbol === asset.label ? asset.label : `${asset.symbol} · ${asset.label}`;
-        const option = new Option(`${identity}${asset.enabled ? "" : " — Unavailable"}`, asset.id);
-        option.disabled = !asset.enabled;
-        group.append(option);
-      }
-      select.append(group);
-    }
+    const creatorPurchasePicker = container.querySelector<HTMLFieldSetElement>(".creator-purchase-picker")!;
+    const creatorPurchasePickerInput = container.querySelector<HTMLInputElement>("[data-creator-purchase-input]")!;
+    const creatorPurchaseInput = container.querySelector<HTMLInputElement>('input[name="creatorPurchaseAmount"]')!;
+    creatorPurchasePicker.hidden = draft.mode !== "flip-tax";
+    const assetPicker = container.querySelector<HTMLElement>("[data-payment-assets]")!;
+    assetPicker.replaceChildren(...assets.map((asset) => createAssetOption(asset, values.paymentAssetId)));
     if (!assets.some(({ id }) => id === values.paymentAssetId)) {
-      const missing = new Option(`${values.paymentAssetId} — Unavailable`, values.paymentAssetId, true, true);
-      missing.disabled = true;
-      select.prepend(missing);
+      assetPicker.prepend(createMissingAssetOption(values.paymentAssetId));
     }
-    select.value = values.paymentAssetId;
 
     const fieldNames: Array<Exclude<keyof LaunchMechanicsFormValues, "paymentAssetId">> = [
       "buyTaxPercent", "sellTaxPercent", "creatorFundsBps", "burnBps", "dividendBps", "liquidityBps", "creatorPurchaseAmount",
@@ -522,18 +596,32 @@ export function createLaunchComposer(): LaunchComposer {
     for (const name of fieldNames) container.querySelector<HTMLInputElement>(`input[name="${name}"]`)!.value = values[name];
 
     const update = (): void => {
-      values.paymentAssetId = select.value;
+      values.paymentAssetId = container.querySelector<HTMLInputElement>('input[name="paymentAssetId"]:checked')?.value ?? values.paymentAssetId;
       for (const name of fieldNames) values[name] = container.querySelector<HTMLInputElement>(`input[name="${name}"]`)!.value;
+      renderRangeValues(container);
       const validation = validateLaunchMechanics(values, assets);
       draft.mechanicsValidation = validation;
       draft.mechanics = validation.mechanics ? structuredClone(validation.mechanics) : null;
       renderMechanicsValidation(container, validation);
       container.querySelector<HTMLElement>("[data-mechanics-summary]")!.textContent = mechanicsSummary(values, assets);
+      syncCreatorPurchasePicker(container, values, assets);
       container.querySelector<HTMLButtonElement>(".save-template")!.disabled = !validation.valid;
       updateDeployState();
     };
-    select.addEventListener("change", update);
+    assetPicker.addEventListener("change", update);
     for (const name of fieldNames) container.querySelector<HTMLInputElement>(`input[name="${name}"]`)!.addEventListener("input", update);
+    creatorPurchasePickerInput.addEventListener("input", () => {
+      creatorPurchaseInput.value = creatorPurchasePickerInput.value;
+      update();
+    });
+    for (const preset of Array.from(container.querySelectorAll<HTMLButtonElement>("[data-creator-purchase]"))) {
+      preset.addEventListener("click", () => {
+        const amount = preset.dataset.creatorPurchase ?? "0";
+        creatorPurchaseInput.value = amount;
+        creatorPurchasePickerInput.value = amount;
+        update();
+      });
+    }
 
     const saveButton = container.querySelector<HTMLButtonElement>(".save-template")!;
     const saveForm = container.querySelector<HTMLFormElement>(".template-save")!;
@@ -578,6 +666,94 @@ export function createLaunchComposer(): LaunchComposer {
   }
 }
 
+function syncCreatorPurchasePicker(container: HTMLElement, values: LaunchMechanicsFormValues, assets: readonly PaymentAsset[]): void {
+  const input = container.querySelector<HTMLInputElement>("[data-creator-purchase-input]")!;
+  input.value = values.creatorPurchaseAmount;
+  const symbol = assets.find(({ id }) => id === values.paymentAssetId)?.symbol ?? "token";
+  container.querySelector<HTMLElement>("[data-creator-purchase-symbol]")!.textContent = symbol;
+  for (const preset of Array.from(container.querySelectorAll<HTMLButtonElement>("[data-creator-purchase]"))) {
+    const selected = preset.dataset.creatorPurchase === values.creatorPurchaseAmount;
+    preset.setAttribute("aria-pressed", String(selected));
+    preset.setAttribute("aria-label", `${preset.dataset.creatorPurchase} ${symbol}`);
+  }
+}
+
+function rangeControl(
+  name: Exclude<keyof LaunchMechanicsFormValues, "paymentAssetId" | "creatorPurchaseAmount">,
+  label: string,
+  ariaLabel: string,
+  min: number,
+  max: number,
+  step: number,
+  describedBy: string,
+): string {
+  return `<label class="slider-field"><span class="slider-label"><span>${label}</span><output data-range-output="${name}"></output></span><input name="${name}" type="range" min="${min}" max="${max}" step="${step}" aria-label="${ariaLabel}" aria-describedby="${describedBy}"><p class="field-error" id="${name}-error"></p></label>`;
+}
+
+function createAssetOption(asset: PaymentAsset, selectedId: string): HTMLLabelElement {
+  const option = document.createElement("label");
+  option.className = "asset-option";
+  option.dataset.category = asset.category;
+  if (asset.unavailableReason) option.title = asset.unavailableReason;
+
+  const input = document.createElement("input");
+  input.type = "radio";
+  input.name = "paymentAssetId";
+  input.value = asset.id;
+  input.checked = asset.id === selectedId;
+  input.disabled = !asset.enabled;
+  input.setAttribute("aria-describedby", "paymentAssetId-error");
+
+  const mark = document.createElement("span");
+  mark.className = "asset-mark";
+  mark.ariaHidden = "true";
+  mark.textContent = asset.symbol.slice(0, 4);
+  const copy = document.createElement("span");
+  copy.className = "asset-copy";
+  const symbol = document.createElement("span");
+  symbol.className = "asset-symbol";
+  symbol.textContent = asset.symbol;
+  const label = document.createElement("span");
+  label.className = "asset-label";
+  label.textContent = asset.enabled ? asset.label : `${asset.label} · unavailable`;
+  copy.append(symbol, label);
+  option.append(input, mark, copy);
+  return option;
+}
+
+function createMissingAssetOption(assetId: string): HTMLLabelElement {
+  return createAssetOption({ id: assetId, symbol: "?", label: "Unavailable asset", category: "crypto", enabled: false, unavailableReason: "This template asset is not in the current registry." }, assetId);
+}
+
+function renderRangeValues(container: HTMLElement): void {
+  for (const name of ["buyTaxPercent", "sellTaxPercent"] as const) {
+    const input = container.querySelector<HTMLInputElement>(`input[name="${name}"]`)!;
+    container.querySelector<HTMLOutputElement>(`[data-range-output="${name}"]`)!.value = `${Number(input.value)}%`;
+    setRangeProgress(input);
+  }
+  for (const name of ["creatorFundsBps", "burnBps", "dividendBps", "liquidityBps"] as const) {
+    const input = container.querySelector<HTMLInputElement>(`input[name="${name}"]`)!;
+    container.querySelector<HTMLOutputElement>(`[data-range-output="${name}"]`)!.value = `${formatPercent(Number(input.value) / 100)}%`;
+    setRangeProgress(input);
+  }
+  const total = ["creatorFundsBps", "burnBps", "dividendBps", "liquidityBps"]
+    .reduce((sum, name) => sum + Number(container.querySelector<HTMLInputElement>(`input[name="${name}"]`)!.value), 0);
+  const totalOutput = container.querySelector<HTMLOutputElement>("[data-allocation-total]")!;
+  totalOutput.value = total === 10_000 ? "100% assigned" : `${formatPercent(total / 100)}% assigned`;
+  totalOutput.classList.toggle("invalid", total !== 10_000);
+}
+
+function setRangeProgress(input: HTMLInputElement): void {
+  const min = Number(input.min);
+  const max = Number(input.max);
+  const progress = ((Number(input.value) - min) / (max - min)) * 100;
+  input.style.setProperty("--range-progress", `${Math.max(0, Math.min(100, progress))}%`);
+}
+
+function formatPercent(value: number): string {
+  return Number(value.toFixed(2)).toLocaleString("en-US", { maximumFractionDigits: 2 });
+}
+
 function mechanicsSummary(values: LaunchMechanicsFormValues, assets: readonly PaymentAsset[]): string {
   const allocation = `${values.creatorFundsBps}/${values.burnBps}/${values.dividendBps}/${values.liquidityBps} bps`;
   const paymentAsset = paymentAssetLabel(values.paymentAssetId, assets);
@@ -587,14 +763,19 @@ function mechanicsSummary(values: LaunchMechanicsFormValues, assets: readonly Pa
   return `${paymentAsset} · Buy tax ${values.buyTaxPercent}% · Sell tax ${values.sellTaxPercent}% · Allocation ${allocation}${dividendPolicy} · Creator purchase ${values.creatorPurchaseAmount}`;
 }
 
+function bpsPercent(bps: number): string {
+  return String(Number((bps / 100).toFixed(2)));
+}
+
 function renderMechanicsValidation(container: HTMLElement, validation: LaunchMechanicsValidation): void {
   const fields: LaunchMechanicsField[] = [
     "paymentAssetId", "buyTaxPercent", "sellTaxPercent", "tax", "creatorFundsBps", "burnBps", "dividendBps", "liquidityBps", "allocation", "creatorPurchaseAmount",
   ];
   for (const field of fields) {
     container.querySelector<HTMLElement>(`#${field}-error`)!.textContent = validation.errors[field] ?? "";
-    const control = container.querySelector<HTMLInputElement | HTMLSelectElement>(`[name="${field}"]`);
-    if (control) control.setAttribute("aria-invalid", validation.errors[field] ? "true" : "false");
+    container.querySelectorAll<HTMLInputElement>(`[name="${field}"]`).forEach((control) => {
+      control.setAttribute("aria-invalid", validation.errors[field] ? "true" : "false");
+    });
   }
   const status = container.querySelector<HTMLElement>(".mechanics-status")!;
   const errorCount = Object.keys(validation.errors).length;

@@ -11,7 +11,7 @@ async function clearTestRegistry(): Promise<void> { await configureTestRegistry(
 
 const registryManifest = {
   schemaVersion: 1,
-  generatedAt: "2026-08-05T12:00:00.000Z",
+  generatedAt: "2026-08-09T00:00:00.000Z",
   assets: [
     { id: "native-bnb", symbol: "BNB", label: "BNB", category: "crypto", enabled: true },
     { id: "nvdab", symbol: "NVDAB", label: "NVIDIA", category: "rwa", enabled: false, unavailableReason: "Temporarily disabled by Flap" },
@@ -30,7 +30,7 @@ test.describe("payment-asset registry cache", () => {
     await expect(popup.getByRole("region", { name: "Crypto registry assets" })).toContainText("EthereumUnavailable");
     await expect(popup.getByRole("region", { name: "RWA registry assets" })).toContainText("SpaceXEnabled");
     await popup.getByRole("button", { name: "Create template" }).click();
-    await expect.poll(() => popup.getByLabel("Payment asset").getByRole("option", { name: /Ethereum.*Unavailable/ }).evaluate((option) => (option as HTMLOptionElement).disabled)).toBe(true);
+    await expect(popup.locator("#payment-asset-options").getByRole("radio", { name: /^ETH.*unavailable/i })).toBeDisabled();
   });
 
   test("uses a fresh local cache without changing it during popup render", async ({ extension }) => {
@@ -42,6 +42,18 @@ test.describe("payment-asset registry cache", () => {
     await popup.reload();
     await expect(popup.getByText(/Cache fresh · last refreshed/)).toBeVisible();
     await expect(popup.getByRole("region", { name: "RWA registry assets" })).toContainText("NVIDIAUnavailable: Temporarily disabled by Flap");
+  });
+
+  test("replaces an older installed cache with the newer bundled manifest", async ({ extension }) => {
+    const popup = await extension.openToolbarConfiguration();
+    const olderManifest = { ...registryManifest, generatedAt: "2026-08-01T00:00:00.000Z" };
+    await popup.evaluate(async ({ cacheKey, manifest }) => chrome.storage.local.set({
+      [cacheKey]: { manifest, refreshedAt: new Date().toISOString(), lastRefreshError: null },
+    }), { cacheKey: "paymentAssetCacheV1", manifest: olderManifest });
+    await popup.reload();
+    await expect(popup.getByText("Bundled manifest · not refreshed yet · stale")).toBeVisible();
+    await expect(popup.getByRole("region", { name: "Crypto registry assets" })).toContainText("BTCB");
+    await expect(popup.getByRole("region", { name: "RWA registry assets" })).toContainText("HOODB");
   });
 
   test("marks old cached data stale and preserves it when refresh fails", async ({ extension }) => {

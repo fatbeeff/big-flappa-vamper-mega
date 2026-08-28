@@ -1,9 +1,9 @@
 {
   "manifest_version": 3,
   "name": "GMGN Vamp",
-  "description": "Begin a Flap launch from supported GMGN BSC token surfaces.",
+  "description": "Launch GMGN tokens through Flap, Long.xyz, or PONS with copied metadata and a browser wallet.",
   "version": "0.1.0",
-  "permissions": ["storage", "alarms"],
+  "permissions": ["storage", "alarms", "scripting"],
   "icons": {
     "16": "assets/vamp-16.png",
     "32": "assets/vamp-32.png",
@@ -23,8 +23,12 @@
   },
   "host_permissions": [
     "https://bsc-dataseed.bnbchain.org/*",
+    "https://discord.com/*",
     "https://funcs.flap.sh/*",
-    "https://gmgn.ai/*"
+    "https://gmgn.ai/*",
+    "https://app.long.xyz/*",
+    "https://www.ponsfamily.com/*",
+    "https://rpc.mainnet.chain.robinhood.com/*"
   ],
   "optional_host_permissions": ["https://*/*"],
   "content_scripts": [
@@ -36,13 +40,30 @@
     },
     {
       "matches": ["https://gmgn.ai/*"],
+      "css": ["flap-tax-inspector.css"],
       "js": ["content.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://discord.com/*"],
+      "css": ["discord-sidebar.css"],
+      "js": ["discord-sidebar.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://app.long.xyz/*"],
+      "js": ["long-relay.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://app.long.xyz/create*", "https://www.ponsfamily.com/launchpad/create*"],
+      "js": ["official-launch-prefill.js"],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["assets/vamp-128.png"],
+      "resources": ["assets/vamp-128.png", "assets/flip-tax.png"],
       "matches": ["https://gmgn.ai/*"]
     }
   ]

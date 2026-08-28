@@ -37,7 +37,7 @@ for (const surface of ["trenches", "chart"] as const) {
     await expect(composer.getByText("GMGN translation: Bat Coin (BAT)")).toBeVisible();
     await expect(composer.getByLabel("Description")).toHaveValue("The original bat token.");
     await expect(composer.getByLabel("Website")).toHaveValue("https://bat.example");
-    await expect(composer.getByLabel("X")).toHaveValue("https://x.com/bat");
+    await expect(composer.getByLabel("X", { exact: true })).toHaveValue("https://x.com/bat");
     await expect(composer.getByLabel("Telegram")).toHaveValue("https://t.me/bat");
     await expect(composer.getByLabel("Image URL")).toHaveValue(completeSource.imageUrl!);
     expect(calls).toEqual([
@@ -83,7 +83,7 @@ test("keeps translations reference-only when contract identity resolution fails"
   await extension.mockBscRpc((route) => route.fulfill({ status: 503, body: "unavailable" }));
   await page.getByRole("button", { name: "Vamp this token" }).click();
   const composer = page.getByRole("dialog", { name: "Launch Composer" });
-  await expect(composer.getByRole("status")).toHaveText("Original token identity could not be loaded. Captured metadata is unchanged.");
+  await expect(composer.getByRole("status")).toHaveText("Source Token identity could not be loaded. Captured metadata is unchanged.");
   await expect(composer.getByLabel("Name")).toHaveValue("");
   await expect(composer.getByLabel("Symbol")).toHaveValue("");
   await expect(composer.getByText("GMGN translation: Translated Name (TRANS)")).toBeVisible();
@@ -107,7 +107,7 @@ test("keeps every field editable when optional metadata is missing", async ({ ex
     ["Telegram", "https://t.me/edited"],
     ["Image URL", "https://images.example/edited.png"],
   ] as const) {
-    const field = composer.getByLabel(label);
+    const field = composer.getByLabel(label, { exact: true });
     if (!["Name", "Symbol"].includes(label)) await expect(field).toHaveValue("");
     await field.fill(value);
     await expect(field).toHaveValue(value);
@@ -162,7 +162,7 @@ test("enriches only missing fields and ignores empty enrichment values", async (
 
   await expect(composer.getByLabel("Description")).toHaveValue("Captured description");
   await expect(composer.getByLabel("Website")).toHaveValue("https://captured.example");
-  await expect(composer.getByLabel("X")).toHaveValue("https://x.com/enriched");
+  await expect(composer.getByLabel("X", { exact: true })).toHaveValue("https://x.com/enriched");
   await expect(composer.getByLabel("Telegram")).toHaveValue("https://t.me/operator");
 });
 
@@ -190,7 +190,7 @@ test("settles pending enrichment when its Token Surface root is removed", async 
   });
 
   await page.waitForTimeout(100);
-  await expect(composer.getByLabel("X")).toHaveValue("");
+  await expect(composer.getByLabel("X", { exact: true })).toHaveValue("");
   await expect(composer).toBeVisible();
 });
 

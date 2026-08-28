@@ -1,14 +1,23 @@
 {
   "schemaVersion": 1,
-  "generatedAt": "2026-08-05T00:00:00.000Z",
+  "generatedAt": "2026-08-08T18:13:27.963Z",
   "assets": [
-    { "id": "native-bnb", "symbol": "BNB", "label": "BNB", "category": "crypto", "enabled": true, "address": "0x0000000000000000000000000000000000000000", "decimals": 18, "usePermit": false },
-    { "id": "usdt", "symbol": "USDT", "label": "USDT", "category": "crypto", "enabled": true, "address": "0x55d398326f99059fF775485246999027B3197955", "decimals": 18, "usePermit": false },
-    { "id": "usd1", "symbol": "USD1", "label": "USD1", "category": "crypto", "enabled": true, "address": "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d", "decimals": 18, "usePermit": true },
+    { "id": "native-bnb", "symbol": "BNB", "label": "BNB", "category": "crypto", "enabled": true, "address": "0x0000000000000000000000000000000000000000", "decimals": 18 },
+    { "id": "usdt", "symbol": "USDT", "label": "USDT", "category": "crypto", "enabled": true, "address": "0x55d398326f99059fF775485246999027B3197955", "decimals": 18 },
+    { "id": "usd1", "symbol": "USD1", "label": "USD1", "category": "crypto", "enabled": true, "address": "0x8d0D000Ee44948FC98c9B98A4FA4921476f08B0d", "decimals": 18 },
+    { "id": "u", "symbol": "U", "label": "United Stables", "category": "crypto", "enabled": true, "address": "0xcE24439F2D9C6a2289F741120FE202248B666666", "decimals": 18 },
+    { "id": "btcb", "symbol": "BTCB", "label": "BTCB Token", "category": "crypto", "enabled": true, "address": "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c", "decimals": 18 },
+    { "id": "sol", "symbol": "SOL", "label": "Solana", "category": "crypto", "enabled": true, "address": "0x570A5D26f7765Ecb712C0924E4De545B89fD43dF", "decimals": 18 },
     { "id": "eth", "symbol": "ETH", "label": "Ethereum", "category": "crypto", "enabled": false, "unavailableReason": "Not currently available for BSC tax-token launches" },
-    { "id": "spcxb", "symbol": "SPCXB", "label": "SpaceX", "category": "rwa", "enabled": true, "address": "0xbe9D156892E55e7154BcD3cB0FEA677F9D3103E1", "decimals": 18, "usePermit": false },
-    { "id": "nvdab", "symbol": "NVDAB", "label": "NVIDIA", "category": "rwa", "enabled": true, "address": "0x02Fca66C1D1aFB4E2A7884261eB00F63598a7436", "decimals": 18, "usePermit": false },
-    { "id": "tslab", "symbol": "TSLAB", "label": "Tesla", "category": "rwa", "enabled": true, "address": "0x5b1910eAaD6450E50f816082Aa078C41F10C292f", "decimals": 18, "usePermit": false },
-    { "id": "aaplb", "symbol": "AAPLB", "label": "Apple", "category": "rwa", "enabled": false, "unavailableReason": "Not currently available for selection" }
+    { "id": "spcxb", "symbol": "SPCXB", "label": "SpaceX", "category": "rwa", "enabled": true, "address": "0xbe9D156892E55e7154BcD3cB0FEA677F9D3103E1", "decimals": 18 },
+    { "id": "skhyb", "symbol": "SKHYB", "label": "SK Hynix", "category": "rwa", "enabled": true, "address": "0xCA750eF65f295BBECd685Abf54e82CAf297BDB61", "decimals": 18 },
+    { "id": "spyb", "symbol": "SPYB", "label": "SPY", "category": "rwa", "enabled": true, "address": "0x7138b48df7D98D7e3cc221BfE7192D0a178182D8", "decimals": 18 },
+    { "id": "xaut", "symbol": "XAUT", "label": "Tether Gold", "category": "rwa", "enabled": true, "address": "0x21cAef8A43163Eea865baeE23b9C2E327696A3bf", "decimals": 6 },
+    { "id": "qqqb", "symbol": "QQQB", "label": "Invesco QQQ Trust", "category": "rwa", "enabled": true, "address": "0x205812CdBed920aFf76C6580abD681a46D11efc7", "decimals": 18 },
+    { "id": "nvdab", "symbol": "NVDAB", "label": "NVIDIA", "category": "rwa", "enabled": true, "address": "0x02Fca66C1D1aFB4E2A7884261eB00F63598a7436", "decimals": 18 },
+    { "id": "tslab", "symbol": "TSLAB", "label": "Tesla", "category": "rwa", "enabled": true, "address": "0x5b1910eAaD6450E50f816082Aa078C41F10C292f", "decimals": 18 },
+    { "id": "aaplb", "symbol": "AAPLB", "label": "Apple", "category": "rwa", "enabled": true, "address": "0x431a3BEE82E2ca41e49895CbECE5bB0F76A89b7A", "decimals": 18 },
+    { "id": "msftb", "symbol": "MSFTB", "label": "Microsoft", "category": "rwa", "enabled": true, "address": "0x80106cb3EAD06659A5ad19DF39D9b4733863B9b0", "decimals": 18 },
+    { "id": "hoodb", "symbol": "HOODB", "label": "Robinhood", "category": "rwa", "enabled": true, "address": "0xA394dCEa3fd3847fD793afBFd163E2e3858B7c65", "decimals": 18 }
   ]
 }

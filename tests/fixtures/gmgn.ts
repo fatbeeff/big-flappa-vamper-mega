@@ -64,8 +64,8 @@ export const hiddenTrenchesFixture = `<!doctype html>
 <html lang="en">
   <head>
     <style>
-      [data-testid="card-left-hover-rail"] { display: none; }
-      [data-testid="trenches-card"]:hover [data-testid="card-left-hover-rail"] { display: flex; }
+      [data-testid="card-hover-actions"] { display: none !important; }
+      [data-testid="trenches-card"]:hover [data-testid="card-hover-actions"] { display: flex !important; }
     </style>
   </head>
   <body data-chain="bsc" data-surface="trenches">

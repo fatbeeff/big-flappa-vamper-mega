@@ -1,4 +1,5 @@
 import {
+  decodeErrorResult,
   decodeEventLog,
   encodeFunctionData,
   getContractAddress,
@@ -53,6 +54,14 @@ const NEW_TOKEN_V6_COMPONENTS = [
 
 export const FLAP_PORTAL_ABI = [
   {
+    type: "error",
+    name: "RateLimitExceeded",
+    inputs: [
+      { name: "user", type: "address" },
+      { name: "lastCreationTime", type: "uint256" },
+    ],
+  },
+  {
     type: "function",
     name: "newTokenV6",
     stateMutability: "payable",
@@ -105,6 +114,46 @@ export const FLAP_PORTAL_ABI = [
     }],
   },
 ] as const;
+
+type DecodedPortalError = {
+  errorName: string;
+  args?: readonly unknown[];
+};
+
+function decodePortalError(error: unknown): DecodedPortalError | undefined {
+  const visited = new Set<unknown>();
+  let current = error;
+
+  while (typeof current === "object" && current !== null && !visited.has(current)) {
+    visited.add(current);
+    const data = Reflect.get(current, "data");
+    if (typeof data === "object" && data !== null && typeof Reflect.get(data, "errorName") === "string") {
+      return data as DecodedPortalError;
+    }
+
+    for (const candidate of [Reflect.get(current, "raw"), data]) {
+      if (typeof candidate !== "string" || !candidate.startsWith("0x")) continue;
+      try {
+        return decodeErrorResult({ abi: FLAP_PORTAL_ABI, data: candidate as Hex });
+      } catch {
+        // This object may contain transport data rather than contract revert data.
+      }
+    }
+    current = Reflect.get(current, "cause");
+  }
+  return undefined;
+}
+
+export function flapPortalErrorMessage(error: unknown): string | undefined {
+  const decoded = decodePortalError(error);
+  if (decoded?.errorName !== "RateLimitExceeded") return undefined;
+
+  const lastCreationTime = decoded.args?.[1];
+  const lastLaunch = typeof lastCreationTime === "bigint"
+    ? new Date(Number(lastCreationTime) * 1_000).toISOString()
+    : "recently";
+  return `Flap rate-limited the connected wallet after its last successful launch at ${lastLaunch}. Wait a few minutes, then deploy again. Your launch mechanics are preserved.`;
+}
 
 export const ERC20_ABI = [
   { type: "function", name: "balanceOf", stateMutability: "view", inputs: [{ name: "owner", type: "address" }], outputs: [{ name: "balance", type: "uint256" }] },

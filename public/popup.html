@@ -17,27 +17,31 @@
       </header>
       <section aria-labelledby="setup-heading">
         <h2 id="setup-heading">Extension ready</h2>
-        <p>Open a supported GMGN BSC token surface to begin a launch.</p>
+        <p>Open a GMGN BSC token or a Robinhood token linked to Long.xyz or PONS to begin a launch.</p>
       </section>
-      <section aria-labelledby="wallet-heading">
+      <section aria-labelledby="discord-sidebar-heading">
         <div class="section-heading">
           <div>
-            <h2 id="wallet-heading">Shared Deployment Wallet</h2>
-            <p>Stored in this browser profile for immediate internal launches.</p>
+            <h2 id="discord-sidebar-heading">Discord Sidebars</h2>
+            <p>Hide servers manually and collapse channels until you hover or focus them.</p>
           </div>
-          <button id="refresh-wallet-balance" type="button" hidden>Refresh balance</button>
+          <label class="toggle-label"><input id="discord-sidebar-enabled" type="checkbox"> Enabled</label>
         </div>
-        <div class="wallet-details">
-          <div><span>Wallet</span><output id="wallet-address">Not configured</output></div>
-          <div><span>BNB balance</span><output id="wallet-balance">--</output></div>
-          <div><span>Connection</span><output id="wallet-connection">Wallet not configured</output></div>
+        <div id="discord-sidebar-controls" class="discord-sidebar-controls">
+          <fieldset><legend>Servers</legend><div class="segmented-control">
+            <label><input name="discord-server-mode" type="radio" value="manual"><span>Manual</span></label>
+            <label><input name="discord-server-mode" type="radio" value="narrow"><span>Auto-hide</span></label>
+          </div></fieldset>
+          <label class="checkbox-label"><input id="discord-servers-visible" type="checkbox"> Server list visible</label>
+          <fieldset><legend>Channels</legend><div class="segmented-control three-up">
+            <label><input name="discord-channel-mode" type="radio" value="collapsed"><span>Collapsed</span></label>
+            <label><input name="discord-channel-mode" type="radio" value="narrow"><span>Auto</span></label>
+            <label><input name="discord-channel-mode" type="radio" value="expanded"><span>Open</span></label>
+          </div></fieldset>
+          <label class="range-field"><span class="range-label"><span>Narrow below</span><output for="discord-narrow-width" data-range-output="discord-narrow-width"></output></span><input id="discord-narrow-width" type="range" min="320" max="1920" step="10" required></label>
         </div>
-        <form id="wallet-form" class="wallet-form">
-          <label>Private key<input id="wallet-private-key" type="password" required autocomplete="off" spellcheck="false" placeholder="0x..."></label>
-          <button id="save-wallet" type="submit">Import wallet</button>
-        </form>
-        <p class="security-note">The private key is never displayed. Importing a new key replaces the current Shared Deployment Wallet.</p>
-        <p id="wallet-status" class="status" aria-live="polite"></p>
+        <p>In manual mode, use the button added to Discord or the “Server list visible” control above.</p>
+        <p id="discord-sidebar-status" class="status" aria-live="polite"></p>
       </section>
       <section aria-labelledby="payment-assets-heading">
         <div class="section-heading">
@@ -58,15 +62,16 @@
         <form id="template-form" hidden>
           <h3 id="template-form-title">Create Launch Template</h3>
           <label>Template name<input id="template-name" required maxlength="80"></label>
-          <label>Payment asset<select id="payment-asset" required></select></label>
+          <fieldset class="form-fieldset"><legend>Payment asset</legend><div id="payment-asset-options" class="asset-picker"></div></fieldset>
           <div class="field-grid">
-            <label>Buy tax percentage<input id="buy-tax" type="number" min="0" max="100" step="0.01" required></label>
-            <label>Sell tax percentage<input id="sell-tax" type="number" min="0" max="100" step="0.01" required></label>
-            <label>Creator funds allocation basis points<input id="creator-funds-allocation" type="number" min="0" max="10000" step="1" required></label>
-            <label>Burn allocation basis points<input id="burn-allocation" type="number" min="0" max="10000" step="1" required></label>
-            <label>Dividend allocation basis points<input id="dividend-allocation" type="number" min="0" max="10000" step="1" required></label>
-            <label>Liquidity allocation basis points<input id="liquidity-allocation" type="number" min="0" max="10000" step="1" required></label>
-            <label>Creator purchase amount<input id="creator-purchase" inputmode="decimal" pattern="[0-9]+(\.[0-9]+)?" required></label>
+            <label class="range-field"><span class="range-label"><span>Buy tax</span><output data-range-output="buy-tax"></output></span><input id="buy-tax" aria-label="Buy tax percentage" type="range" min="0" max="10" step="0.01" required></label>
+            <label class="range-field"><span class="range-label"><span>Sell tax</span><output data-range-output="sell-tax"></output></span><input id="sell-tax" aria-label="Sell tax percentage" type="range" min="0" max="10" step="0.01" required></label>
+            <div class="allocation-heading"><span>Allocation</span><output id="template-allocation-total"></output></div>
+            <label class="range-field"><span class="range-label"><span>Creator</span><output data-range-output="creator-funds-allocation"></output></span><input id="creator-funds-allocation" aria-label="Creator funds allocation basis points" type="range" min="0" max="10000" step="1" required></label>
+            <label class="range-field"><span class="range-label"><span>Burn</span><output data-range-output="burn-allocation"></output></span><input id="burn-allocation" aria-label="Burn allocation basis points" type="range" min="0" max="10000" step="1" required></label>
+            <label class="range-field"><span class="range-label"><span>Holders</span><output data-range-output="dividend-allocation"></output></span><input id="dividend-allocation" aria-label="Dividend allocation basis points" type="range" min="0" max="10000" step="1" required></label>
+            <label class="range-field"><span class="range-label"><span>Liquidity</span><output data-range-output="liquidity-allocation"></output></span><input id="liquidity-allocation" aria-label="Liquidity allocation basis points" type="range" min="0" max="10000" step="1" required></label>
+            <label class="creator-purchase">Creator purchase amount<input id="creator-purchase" inputmode="decimal" pattern="[0-9]+(\.[0-9]+)?" required></label>
           </div>
           <div class="form-actions"><button type="button" id="cancel-template">Cancel</button><button type="submit">Save template</button></div>
         </form>
@@ -78,8 +83,8 @@
       </section>
       <dl>
         <div><dt>GMGN</dt><dd>Shell connected</dd></div>
-        <div><dt>BSC RPC</dt><dd id="bsc-rpc-health">Wallet not configured</dd></div>
-        <div><dt>Flap</dt><dd>Setup required</dd></div>
+        <div><dt>Wallet</dt><dd>Prompted when you deploy</dd></div>
+        <div><dt>Flap</dt><dd>Validated before each deploy</dd></div>
         <div><dt>Version</dt><dd id="extension-version">—</dd></div>
       </dl>
     </main>

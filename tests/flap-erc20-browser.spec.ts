@@ -3,7 +3,6 @@ import { ERC20_ABI, FLAP_PORTAL_ABI, FLAP_PORTAL_ADDRESS } from "../src/flap-con
 import { metadataFixture } from "./fixtures/gmgn";
 import { expect, test, type ExtensionHarness } from "./support/extension-harness";
 
-const PRIVATE_KEY = `0x${"0".repeat(63)}1`;
 const OWNER = "0x7e5f4552091a69125d5dfcb7b8c2659029395bdf";
 const TOKEN = "0x1111111111111111111111111111111111111111";
 const CREATED = "0x980Ac5B9B638955E43508aD6ae7fac69E0Cf7777";
@@ -15,7 +14,7 @@ test("MV3 background performs zero-reset, exact ERC-20 approval, then one launch
   const rpc = await installErc20Rpc(extension);
   const { page, composer } = await openComposer(extension);
   await composer.getByRole("button", { name: "Deploy" }).click();
-  await page.waitForURL(/gmgn\.ai\/bsc\/token\//, { waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(/gmgn\.ai\/bsc\/token\//);
   expect(page.url().toLowerCase()).toBe(`https://gmgn.ai/bsc/token/${CREATED}`.toLowerCase());
   expect(rpc.sent()).toBe(3);
   expect(rpc.accepted()).toEqual(TX_HASHES.slice(0, 3));
@@ -36,7 +35,7 @@ test("confirmed ERC-20 approval reset revert preserves edits and permits a clean
   await expect(composer.getByLabel("Name")).toHaveValue("Edited after revert");
   await expect(composer.getByRole("button", { name: "Deploy" })).toBeEnabled();
   await composer.getByRole("button", { name: "Deploy" }).click();
-  await page.waitForURL(/gmgn\.ai\/bsc\/token\//, { waitUntil: "domcontentloaded" });
+  await expect(page).toHaveURL(/gmgn\.ai\/bsc\/token\//);
   expect(rpc.sent()).toBe(4);
 });
 
@@ -52,20 +51,20 @@ test("MV3 nonce conflict preserves edits and never retries the rejected broadcas
     }
     await fulfill(route, body.id, baseRpcResult(body.method, body.params));
   });
-  const { composer } = await openComposer(extension);
+  const { page, composer } = await openComposer(extension);
+  await extension.installInjectedWallet(page, { rejectMessage: "nonce too low" });
   await composer.getByLabel("Name").fill("Nonce-safe edit");
   await composer.getByRole("button", { name: "Deploy" }).click();
   await expect(composer.locator(".launch-status")).toContainText(/Nonce conflict.*No replacement was sent/i);
   await expect(composer.getByLabel("Name")).toHaveValue("Nonce-safe edit");
   await expect(composer.getByRole("button", { name: "Deploy" })).toBeEnabled();
-  expect(attempts).toBe(1);
+  expect(await page.evaluate(() => Reflect.get(window, "__vampWalletSent"))).toBe(1);
 });
 
 async function installState(extension: ExtensionHarness, paymentAssetId: "usdt" | "native-bnb"): Promise<void> {
   const popup = await extension.openToolbarConfiguration();
-  await popup.evaluate(async ({ privateKey, paymentAssetId }) => {
+  await popup.evaluate(async ({ paymentAssetId }) => {
     await chrome.storage.local.set({
-      sharedDeploymentWalletV1: { version: 1, privateKey },
       launchTemplateDocument: {
         format: "gmgn-vamp-launch-templates", version: 2, activeTemplateId: "browser-erc20",
         templates: [{
@@ -77,7 +76,7 @@ async function installState(extension: ExtensionHarness, paymentAssetId: "usdt" 
         }],
       },
     });
-  }, { privateKey: PRIVATE_KEY, paymentAssetId });
+  }, { paymentAssetId });
   await popup.close();
 }
 
@@ -85,6 +84,7 @@ async function openComposer(extension: ExtensionHarness) {
   const page = await extension.openGmgnTokenSurface(metadataFixture("trenches", {
     sourceAddress: TOKEN, translatedName: "Vamp", translatedSymbol: "VAMP", imageUrl: "https://gmgn.ai/__fixtures/vamp.png",
   }), "https://gmgn.ai/?chain=bsc&tab=trenches");
+  await extension.installInjectedWallet(page, { transactionHashes: TX_HASHES });
   // This deterministic fixture reaches the required 7777 CREATE2 suffix in
   // 76 iterations, keeping MV3 error-path assertions independent of CPU speed.
   await page.context().route("https://funcs.flap.sh/api/upload", (route) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { create: "test-315" } }) }));
@@ -104,15 +104,13 @@ async function installErc20Rpc(extension: ExtensionHarness, resetStatus: () => "
   let nextStage: "reset" | "approval" | "launch" = "reset";
   await extension.mockBscRpc(async (route) => {
     const body = route.request().postDataJSON() as { id: number; method: string; params?: unknown[] };
-    if (body.method === "eth_sendRawTransaction") {
-      const hash = TX_HASHES[sent++];
-      accepted.push(hash);
-      stages.set(hash, nextStage);
-      await fulfill(route, body.id, hash);
-      return;
-    }
     if (body.method === "eth_getTransactionReceipt") {
       const hash = String(body.params?.[0]);
+      if (!stages.has(hash)) {
+        sent += 1;
+        accepted.push(hash);
+        stages.set(hash, nextStage);
+      }
       const stage = stages.get(hash) ?? "launch";
       const status = stage === "reset" ? resetStatus() : "success";
       if (status === "success") nextStage = stage === "reset" ? "approval" : stage === "approval" ? "launch" : "launch";
