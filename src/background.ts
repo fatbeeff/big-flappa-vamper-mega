@@ -1,20 +1,17 @@
-import { resolveErc20Identity } from "./bsc-rpc";
-import { refreshPaymentAssetsIfStale } from "./payment-assets";
-import { ensurePaymentAssetRefreshAlarm, PAYMENT_ASSET_ALARM_NAME } from "./payment-asset-scheduler";
+import { resolveErc20Identity, resolvePonsLaunchMetadata } from "./bsc-rpc";
 import { flapPortalErrorMessage, gmgnBscTokenUrl, type FlapLaunchRequest } from "./flap-contract";
-import { createProductionDependencies, launchFlapTaxToken, validatePublicHttpsImageUrl } from "./flap-launch";
+import { createProductionDependencies, launchFlapTaxToken } from "./flap-launch";
 import { assertLaunchMechanicsInvariants } from "./launch-mechanics";
 import { inspectFlapTaxAddresses } from "./flap-tax-info";
 import { inspectPonsTaxAddresses, ROBINHOOD_RPC_URL } from "./pons-tax-info";
 import type { LongAuthenticityInfo } from "./long-authenticity";
-
-// MV3 workers are disposable. Top-level execution happens on every worker start,
-// so a cleared/missing alarm is repaired independently of install events.
-void ensurePaymentAssetRefreshAlarm(chrome.alarms);
+import { gmgnRobinhoodTokenUrl, launchPonsToken, PonsPostLaunchError, type PonsLaunchRequest } from "./pons-launch";
+import { uploadPonsImageFromPonsOrigin } from "./pons-site-upload";
+import { ensureImageOriginPermission } from "./image-origin-permission";
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
   if (isOfficialLaunchRequest(message)) {
-    void chrome.tabs.create({ url: message.destination === "pons" ? "https://www.ponsfamily.com/launchpad/create" : "https://app.long.xyz/create" });
+    void chrome.tabs.create({ url: "https://app.long.xyz/create" });
     sendResponse({ ok: true });
     return false;
   }
@@ -41,9 +38,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
   }
   if (isImagePermissionRequest(message)) {
     try {
-      const origin = validatePublicHttpsImageUrl(message.url).origin;
-      const permission = { origins: [`${origin}/*`] };
-      void chrome.permissions.contains(permission).then((alreadyGranted) => alreadyGranted || chrome.permissions.request(permission)).then(
+      void ensureImageOriginPermission(message.url).then(
         (granted) => sendResponse({ ok: granted, error: granted ? undefined : "Image-host access was not granted." }),
         () => sendResponse({ ok: false, error: "Image-host access could not be granted." }),
       );
@@ -76,6 +71,38 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
     return true;
   }
 
+  if (isPonsMetadataRequest(message)) {
+    resolvePonsLaunchMetadata(message.address, ROBINHOOD_RPC_URL).then(
+      (enrichment) => sendResponse({ ok: true, enrichment }),
+      () => sendResponse({ ok: false }),
+    );
+    return true;
+  }
+
+  if (isPonsLaunchRequest(message)) {
+    if (launchInFlight) {
+      sendResponse({ ok: false, error: "A launch is already signing or broadcasting." });
+      return false;
+    }
+    const tabId = _sender.tab?.id;
+    launchInFlight = true;
+    const report = (phase: string, status: string): void => {
+      if (tabId !== undefined) void chrome.tabs.sendMessage(tabId, { type: "vamp:launch-progress", requestId: message.requestId, phase, status }).catch(() => undefined);
+    };
+    void (async () => {
+      try {
+        if (tabId === undefined) throw new Error("The launch tab is unavailable.");
+        const result = await launchPonsToken(message.launch, injectedWalletProvider(tabId), report, uploadPonsImageFromPonsOrigin);
+        sendResponse({ ok: true, ...result, navigationUrl: gmgnRobinhoodTokenUrl(result.tokenAddress) });
+      } catch (error) {
+        sendResponse(error instanceof PonsPostLaunchError
+          ? { ok: false, launched: true, error: error.message, navigationUrl: `https://www.ponsfamily.com/launchpad/${error.tokenAddress}` }
+          : { ok: false, error: launchErrorMessage(error) });
+      } finally { launchInFlight = false; }
+    })();
+    return true;
+  }
+
   if (!isIdentityRequest(message)) return false;
 
   resolveErc20Identity(message.address, message.network === "robinhood" ? ROBINHOOD_RPC_URL : undefined).then(
@@ -87,9 +114,9 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
 
 let launchInFlight = false;
 
-function isOfficialLaunchRequest(message: unknown): message is { type: "vamp:open-official-launch"; destination: "long" | "pons" } {
+function isOfficialLaunchRequest(message: unknown): message is { type: "vamp:open-official-launch"; destination: "long" } {
   return typeof message === "object" && message !== null && Reflect.get(message, "type") === "vamp:open-official-launch"
-    && ["long", "pons"].includes(String(Reflect.get(message, "destination")));
+    && Reflect.get(message, "destination") === "long";
 }
 
 function isLaunchRequest(message: unknown): message is { type: "vamp:launch-token"; requestId: string; launch: FlapLaunchRequest } {
@@ -101,6 +128,14 @@ function isLaunchRequest(message: unknown): message is { type: "vamp:launch-toke
     && typeof Reflect.get(launch, "metadata") === "object"
     && typeof Reflect.get(launch, "mechanics") === "object"
     && typeof Reflect.get(launch, "imageSource") === "object";
+}
+
+function isPonsLaunchRequest(message: unknown): message is { type: "vamp:launch-pons"; requestId: string; launch: PonsLaunchRequest } {
+  if (typeof message !== "object" || message === null || Reflect.get(message, "type") !== "vamp:launch-pons") return false;
+  const launch = Reflect.get(message, "launch");
+  return typeof Reflect.get(message, "requestId") === "string" && typeof launch === "object" && launch !== null
+    && typeof Reflect.get(launch, "metadata") === "object" && typeof Reflect.get(launch, "imageSource") === "object"
+    && typeof Reflect.get(launch, "pairToken") === "string" && typeof Reflect.get(launch, "creatorPurchase") === "string";
 }
 
 function isFlapTaxRequest(message: unknown): message is { type: "vamp:inspect-flap-taxes"; addresses: string[] } {
@@ -162,7 +197,7 @@ function launchErrorMessage(error: unknown): string {
   if (!(error instanceof Error)) return "Launch failed. Your edits are preserved; retry when the connection is healthy.";
   if (/user rejected|denied transaction/i.test(error.message)) return "Launch signing was rejected. Your edits are preserved.";
   if (/timeout|timed out/i.test(error.message)) return error.message;
-  if (/revert/i.test(error.message)) return `Flap rejected the launch: ${error.message}`;
+  if (/revert/i.test(error.message)) return `The launch contract rejected the transaction: ${error.message}`;
   if (/fetch|network|HTTP|RPC|transport/i.test(error.message)) return `Connection failed: ${error.message}`;
   return error.message || "Launch failed. Your edits are preserved.";
 }
@@ -175,17 +210,12 @@ function isIdentityRequest(message: unknown): message is { type: "vamp:resolve-s
     && ["bsc", "robinhood"].includes(String(Reflect.get(message, "network")));
 }
 
-chrome.runtime.onInstalled.addListener(() => {
-  void ensurePaymentAssetRefreshAlarm(chrome.alarms);
-  void refreshPaymentAssetsIfStale();
-});
-chrome.runtime.onStartup.addListener(() => {
-  void ensurePaymentAssetRefreshAlarm(chrome.alarms);
-  void refreshPaymentAssetsIfStale();
-});
-chrome.alarms.onAlarm.addListener((alarm) => {
-  if (alarm.name === PAYMENT_ASSET_ALARM_NAME) void refreshPaymentAssetsIfStale();
-});
+function isPonsMetadataRequest(message: unknown): message is { type: "vamp:resolve-pons-metadata"; address: string } {
+  return typeof message === "object" && message !== null
+    && Reflect.get(message, "type") === "vamp:resolve-pons-metadata"
+    && typeof Reflect.get(message, "address") === "string"
+    && /^0x[0-9a-f]{40}$/i.test(String(Reflect.get(message, "address")));
+}
 
 function injectedWalletProvider(tabId: number) {
   return {

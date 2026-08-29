@@ -28,7 +28,7 @@ if ((await rpc("eth_getCode", [portal, "latest"])) === "0x") throw new Error("Fl
 if ((await rpc("eth_getCode", [taxTokenV3Implementation, "latest"])) === "0x") throw new Error("Flap Tax Token V3 implementation has no deployed code.");
 const version = await call(portal, "version");
 const nonce = await call(portal, "nonce");
-const manifest = JSON.parse(await readFile(new URL("../registry/payment-assets.json", import.meta.url), "utf8"));
+const manifest = JSON.parse(await readFile(new URL("../src/payment-assets.json", import.meta.url), "utf8"));
 for (const asset of manifest.assets.filter((candidate) => candidate.enabled && candidate.address !== "0x0000000000000000000000000000000000000000")) {
   if ((await rpc("eth_getCode", [asset.address, "latest"])) === "0x") throw new Error(`${asset.symbol} has no deployed token code.`);
   const decimals = Number(await call(asset.address, "decimals"));

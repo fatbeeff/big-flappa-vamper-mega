@@ -39,13 +39,11 @@ export const PONS_DISTRIBUTOR_FACTORY_ABI = [{
   outputs: [{ name: "", type: "address" }],
 }] as const;
 
-const FEE_BPS_ABI = [{
-  type: "function" as const,
-  name: "feeBps",
-  stateMutability: "view" as const,
-  inputs: [],
-  outputs: [{ name: "", type: "uint256" as const }],
-}] as const;
+const CURVE_FEE_ABI = [
+  { type: "function", name: "feeBps", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint256" }] },
+  { type: "function", name: "protocolFeeShareBps", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint16" }] },
+  { type: "function", name: "buybackBurnBps", stateMutability: "view", inputs: [], outputs: [{ name: "", type: "uint16" }] },
+] as const;
 
 const SYMBOL_ABI = [{
   type: "function",
@@ -90,20 +88,22 @@ export async function inspectPonsTaxAddresses(
   if (!launches.length) return {};
 
   const mechanics = await request(launches.flatMap(({ launched }, index) => [
-    call(3000 + index, launched.curve, encodeFunctionData({ abi: FEE_BPS_ABI, functionName: "feeBps" })),
+    call(3000 + index, launched.curve, encodeFunctionData({ abi: CURVE_FEE_ABI, functionName: "feeBps" })),
+    call(4000 + index, launched.curve, encodeFunctionData({ abi: CURVE_FEE_ABI, functionName: "protocolFeeShareBps" })),
     ...(launched.pairToken === zeroAddress ? [] : [call(5000 + index, launched.pairToken, encodeFunctionData({ abi: SYMBOL_ABI, functionName: "symbol" }))]),
-    ...(launched.buybackEnabled ? [call(6000 + index, launched.token, encodeFunctionData({ abi: SYMBOL_ABI, functionName: "symbol" }))] : []),
+    ...(launched.buybackEnabled ? [call(6000 + index, launched.curve, encodeFunctionData({ abi: CURVE_FEE_ABI, functionName: "buybackBurnBps" }))] : []),
   ]));
 
   return Object.fromEntries(launches.map(({ address, launched, holderFeeSharing }, index) => {
     const quoteSymbol = launched.pairToken === zeroAddress ? "ETH" : decodeSymbol(responseById(mechanics, 5000 + index));
-    const dividendSymbol = launched.buybackEnabled ? `${quoteSymbol}+${decodeSymbol(responseById(mechanics, 6000 + index))}` : quoteSymbol;
     return [address, normalizePonsHolderTaxInfo({
-      feeBps: decodeUint(responseById(mechanics, 3000 + index)),
+      feeBps: decodeCurveBps(responseById(mechanics, 3000 + index), "feeBps"),
+      protocolFeeShareBps: decodeCurveBps(responseById(mechanics, 4000 + index), "protocolFeeShareBps"),
+      buybackBurnBps: launched.buybackEnabled ? decodeCurveBps(responseById(mechanics, 6000 + index), "buybackBurnBps") : 0,
       creatorTaxBps: Number(launched.creatorTaxBps),
       pairToken: launched.pairToken,
       quoteSymbol,
-      dividendSymbol,
+      buybackEnabled: launched.buybackEnabled,
       holderFeeSharing,
     })];
   }));
@@ -112,16 +112,23 @@ export async function inspectPonsTaxAddresses(
 export function normalizePonsHolderTaxInfo(raw: {
   feeBps: number;
   creatorTaxBps: number;
+  protocolFeeShareBps?: number;
+  buybackBurnBps?: number;
+  buybackEnabled?: boolean;
   pairToken?: string;
   quoteSymbol?: string;
-  dividendSymbol?: string;
   holderFeeSharing?: boolean;
 }): FlapTaxInfo {
   for (const [name, value] of Object.entries(raw).filter(([name]) => name.endsWith("Bps"))) {
     if (!Number.isInteger(value) || typeof value !== "number" || value < 0 || value > 10_000) throw new TypeError(`${name} must be valid basis points`);
   }
   const totalTaxBps = raw.feeBps + raw.creatorTaxBps;
-  const dividendBps = totalTaxBps > 0 && raw.holderFeeSharing !== false ? 10_000 : 0;
+  const creatorBaseFeeBps = Math.floor(raw.feeBps * (10_000 - (raw.protocolFeeShareBps ?? 0)) / 10_000);
+  const directCreatorBaseFeeBps = raw.buybackEnabled
+    ? Math.floor(creatorBaseFeeBps * (10_000 - (raw.buybackBurnBps ?? 0)) / 10_000)
+    : creatorBaseFeeBps;
+  const holderFeeBps = raw.holderFeeSharing === false ? 0 : directCreatorBaseFeeBps + raw.creatorTaxBps;
+  const dividendBps = totalTaxBps === 0 ? 0 : Math.floor(holderFeeBps * 10_000 / totalTaxBps);
   return normalizeFlapTaxInfo({
     marketBps: totalTaxBps === 0 ? 0 : 10_000 - dividendBps,
     deflationBps: 0,
@@ -131,7 +138,7 @@ export function normalizePonsHolderTaxInfo(raw: {
     sellTaxBps: totalTaxBps,
     dividendToken: raw.pairToken ?? zeroAddress,
     quoteToken: raw.pairToken ?? zeroAddress,
-    dividendSymbol: raw.dividendSymbol ?? raw.quoteSymbol ?? "ETH",
+    dividendSymbol: raw.quoteSymbol ?? "ETH",
     quoteSymbol: raw.quoteSymbol ?? "ETH",
   });
 }
@@ -154,9 +161,9 @@ function responseById(batch: unknown, id: number): string {
   return result;
 }
 
-function decodeUint(data: string): number {
-  const value = Number(decodeFunctionResult({ abi: FEE_BPS_ABI, functionName: "feeBps", data: data as `0x${string}` }));
-  if (!Number.isSafeInteger(value)) throw new TypeError("feeBps is not a safe integer");
+function decodeCurveBps(data: string, functionName: "feeBps" | "protocolFeeShareBps" | "buybackBurnBps"): number {
+  const value = Number(decodeFunctionResult({ abi: CURVE_FEE_ABI, functionName, data: data as `0x${string}` }));
+  if (!Number.isSafeInteger(value)) throw new TypeError(`${functionName} is not a safe integer`);
   return value;
 }
 

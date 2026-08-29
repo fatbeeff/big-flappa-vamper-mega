@@ -18,7 +18,10 @@ Detected project type: `Generic`.
 
 Run the relevant commands before handing work back:
 
-- Add the repository-specific validation commands before relying on this file.
+- `npm run typecheck`
+- `npm run build`
+- `npm test`
+- `npm run smoke:readonly` for Flap contract or payment-asset changes
 
 ### Working agreements
 

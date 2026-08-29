@@ -107,7 +107,7 @@ export async function launchFlapTaxToken(
   }
   const paymentAsset = resolvePaymentAsset(request.mechanics.paymentAssetId, deps.paymentAssets);
   const account = deps.account;
-  deps.report("preflight", "Checking wallet, balance, payment asset, and Flap contractâ€¦");
+  deps.report("preflight", "Checking wallet, balance, payment asset, and Flap contract…");
 
   if (account.address.toLowerCase() !== (deps.walletClient.account?.address ?? account.address).toLowerCase()) {
     throw new Error("Connected wallet signer does not match the selected account.");
@@ -137,7 +137,7 @@ export async function launchFlapTaxToken(
     }
   }
 
-  deps.report("metadata", "Persisting image and public metadata with Flapâ€¦");
+  deps.report("metadata", "Persisting image and public metadata with Flap…");
   const metadataCid = await deps.uploadMetadata(request);
   if (!metadataCid.trim()) throw new Error("Flap metadata upload returned no CID.");
   const salt = await deps.findSalt(metadataCid);
@@ -159,7 +159,7 @@ export async function launchFlapTaxToken(
       args: [account.address, FLAP_PORTAL_ADDRESS],
     });
     if (allowance < quoteAmount) {
-      deps.report("approval", `Approving ${paymentAsset.symbol} creator purchaseâ€¦`);
+      deps.report("approval", `Approving ${paymentAsset.symbol} creator purchase…`);
       if (allowance > 0n) {
         const reset = await deps.publicClient.simulateContract({
           account,
@@ -214,11 +214,11 @@ export async function launchFlapTaxToken(
   ]);
   if (launchNativeBalance < value + gas * gasPrice) throw new Error("Connected wallet has insufficient BNB for launch value and gas.");
 
-  deps.report("signing", "Signing and broadcasting the Flap launchâ€¦");
+  deps.report("signing", "Signing and broadcasting the Flap launch…");
   const launchNonce = await deps.publicClient.getTransactionCount({ address: account.address, blockTag: "pending" });
   const transactionHash = await writeWithNonceGuard(deps, { ...simulation.request, nonce: launchNonce });
   if (durable) await persistPendingFlapTransaction(pendingRecord("launch", transactionHash, launchNonce, account.address, draftFingerprint, metadataCid));
-  deps.report("confirming", "Broadcast. Waiting for the first successful receiptâ€¦");
+  deps.report("confirming", "Broadcast. Waiting for the first successful receipt…");
   const receipt = await waitForReceipt(deps.publicClient, transactionHash, "Flap launch");
   if (receipt.status !== "success") {
     if (durable) await clearPendingFlapTransaction(transactionHash);
@@ -262,7 +262,7 @@ export async function uploadFlapMetadata(
   request: FlapLaunchRequest,
   requestFetch: typeof fetch = fetch,
 ): Promise<string> {
-  const file = await imageFile(request, requestFetch);
+  const file = await tokenImageFile(request, requestFetch);
   const form = new FormData();
   form.append("operations", JSON.stringify({
     query: "mutation Create($file: Upload!, $meta: MetadataInput!) { create(file: $file, meta: $meta) }",
@@ -290,7 +290,10 @@ export async function uploadFlapMetadata(
   return cid;
 }
 
-async function imageFile(request: FlapLaunchRequest, requestFetch: typeof fetch): Promise<File> {
+export async function tokenImageFile(
+  request: Pick<FlapLaunchRequest, "imageSource">,
+  requestFetch: typeof fetch = fetch,
+): Promise<File> {
   const source = request.imageSource;
   if (source.kind === "none") throw new Error("A token image is required by Flap.");
   if (source.kind === "uploaded-file") {
@@ -410,7 +413,7 @@ async function writeWithNonceGuard(deps: FlapLaunchDependencies, request: any): 
     const message = error instanceof Error ? error.message : String(error);
     if (/nonce too low|replacement transaction|already known|known transaction/i.test(message)) {
       const latest = await deps.publicClient.getTransactionCount({ address: deps.account.address, blockTag: "latest" }).catch(() => undefined);
-      throw new Error(`Nonce conflict while broadcasting${latest === undefined ? "" : ` (latest nonce ${latest})`}. No replacement was sent; reconcile the shared wallet before retrying.`);
+      throw new Error(`Nonce conflict while broadcasting${latest === undefined ? "" : ` (latest nonce ${latest})`}. No replacement was sent; reconcile the connected wallet before retrying.`);
     }
     throw error;
   }

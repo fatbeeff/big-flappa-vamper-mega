@@ -15,47 +15,25 @@ h2 { font-size: 14px; }
 .eyebrow { color: #ff5b64; font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
 section { margin: 18px 0; padding: 14px; border: 1px solid #2c2f34; border-radius: 10px; background: #191b1f; }
 section p { margin-top: 6px; color: #9da1aa; font-size: 12px; line-height: 1.45; }
-.section-heading, .template-title, .template-actions, .transfer-actions, .form-actions { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
-button, .import-button { border: 1px solid #3a3d43; border-radius: 7px; background: #24262b; color: #f1f2f4; padding: 7px 9px; font: inherit; cursor: pointer; }
-button:hover, .import-button:hover { border-color: #ff5b64; }
-.template-list { display: grid; gap: 8px; margin-top: 12px; }
-.template-card { border: 1px solid #2c2f34; border-radius: 8px; padding: 10px; }
-.template-card p { margin-top: 4px; }
-.template-actions { justify-content: flex-end; margin-top: 8px; }
+.section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+button { border: 1px solid #3a3d43; border-radius: 7px; background: #24262b; color: #f1f2f4; padding: 7px 9px; font: inherit; cursor: pointer; }
+button:hover { border-color: #ff5b64; }
 .active-badge { color: #ff737b; font-size: 10px; font-weight: 700; text-transform: uppercase; }
 form { margin-top: 12px; padding-top: 12px; border-top: 1px solid #2c2f34; }
 form[hidden] { display: none; }
 h3 { margin: 0 0 10px; font-size: 13px; }
 form label { display: grid; gap: 4px; color: #b7bac1; font-size: 11px; }
 input { min-width: 0; border: 1px solid #3a3d43; border-radius: 6px; background: #111214; color: #f1f2f4; padding: 7px; }
-input:focus-visible, button:focus-visible, .import-button:has(input:focus-visible), .asset-option:has(input:focus-visible), .segmented-control label:has(input:focus-visible) { outline: 2px solid #ff5b64; outline-offset: 2px; }
-.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 9px; }
+input:focus-visible, button:focus-visible, .segmented-control label:has(input:focus-visible) { outline: 2px solid #ff5b64; outline-offset: 2px; }
 .form-fieldset, .discord-sidebar-controls fieldset { min-width: 0; margin: 10px 0 0; padding: 0; border: 0; }
 .form-fieldset legend, .discord-sidebar-controls legend { margin-bottom: 6px; padding: 0; color: #b7bac1; font-size: 11px; }
-.asset-picker { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
-.asset-option { position: relative; display: grid; grid-template-columns: 28px minmax(0, 1fr); align-items: center; gap: 7px; min-height: 44px; padding: 6px; color: #d8dbe0; background: #141619; border: 1px solid #33363c; border-radius: 9px; cursor: pointer; }
-.asset-option:hover { border-color: #62666f; }
-.asset-option:has(input:checked) { color: #fff; background: #35191e; border-color: #cf4651; }
-.asset-option:has(input:disabled) { cursor: not-allowed; opacity: .42; }
-.asset-option input, .segmented-control input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
-.asset-mark { display: grid; place-items: center; width: 28px; height: 28px; color: #fff; background: #8f6915; border-radius: 50%; font-size: 8px; font-weight: 800; }
-.asset-option[data-category="rwa"] .asset-mark { background: #394f74; }
-.asset-copy { min-width: 0; }
-.asset-symbol, .asset-name { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.asset-symbol { font-size: 10px; font-weight: 750; }
-.asset-name { margin-top: 2px; color: #9da1aa; font-size: 9px; }
+.segmented-control input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .range-field { display: grid; gap: 6px; }
-.range-label, .allocation-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; color: #b7bac1; font-size: 11px; }
-.range-label output, .allocation-heading output { color: #f1f2f4; font-variant-numeric: tabular-nums; font-weight: 700; }
+.range-label { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; color: #b7bac1; font-size: 11px; }
+.range-label output { color: #f1f2f4; font-variant-numeric: tabular-nums; font-weight: 700; }
 input[type="range"] { width: 100%; height: 18px; padding: 0; border: 0; background: transparent; accent-color: #d94752; cursor: ew-resize; }
 input[type="range"]::-webkit-slider-runnable-track { height: 4px; background: linear-gradient(90deg, #cf4651 var(--range-progress, 0%), #3a3d43 var(--range-progress, 0%)); border-radius: 2px; }
 input[type="range"]::-webkit-slider-thumb { width: 16px; height: 16px; margin-top: -6px; background: #f5f5f6; border: 3px solid #cf4651; border-radius: 50%; appearance: none; }
-.allocation-heading { grid-column: 1 / -1; margin-top: 3px; padding-top: 10px; border-top: 1px solid #2c2f34; }
-.allocation-heading output.invalid { color: #ff858b; }
-.creator-purchase { grid-column: 1 / -1; }
-.form-actions { justify-content: flex-end; margin-top: 10px; }
-.transfer-actions { justify-content: flex-start; margin-top: 12px; }
-.import-button input { position: absolute; inline-size: 1px; block-size: 1px; overflow: hidden; clip-path: inset(50%); }
 .status { min-height: 18px; }
 .status.error { color: #ff858b; }
 .toggle-label, .checkbox-label { display: flex; align-items: center; gap: 7px; color: #b7bac1; font-size: 11px; }
@@ -76,12 +54,6 @@ input[type="range"]::-webkit-slider-thumb { width: 16px; height: 16px; margin-to
 .asset-state { color: #65d7ac; }
 .asset-state.unavailable { color: #a3a6ad; }
 button:disabled { cursor: wait; opacity: .65; }
-.wallet-details { display: grid; gap: 7px; margin-top: 12px; }
-.wallet-details div { display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 8px; font-size: 12px; }
-.wallet-details span { color: #9da1aa; }
-.wallet-details output { overflow-wrap: anywhere; }
-.wallet-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px; }
-.security-note { font-size: 11px; }
 dl { margin: 0; display: grid; gap: 8px; }
 dl div { display: flex; justify-content: space-between; gap: 16px; font-size: 12px; }
 dt { color: #9da1aa; }

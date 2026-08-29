@@ -3,7 +3,7 @@
   "name": "GMGN Vamp",
   "description": "Launch GMGN tokens through Flap, Long.xyz, or PONS with copied metadata and a browser wallet.",
   "version": "0.1.0",
-  "permissions": ["storage", "alarms", "scripting"],
+  "permissions": ["storage", "scripting"],
   "icons": {
     "16": "assets/vamp-16.png",
     "32": "assets/vamp-32.png",
@@ -56,7 +56,7 @@
       "run_at": "document_idle"
     },
     {
-      "matches": ["https://app.long.xyz/create*", "https://www.ponsfamily.com/launchpad/create*"],
+      "matches": ["https://app.long.xyz/create*"],
       "js": ["official-launch-prefill.js"],
       "run_at": "document_idle"
     }

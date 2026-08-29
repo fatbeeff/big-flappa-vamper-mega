@@ -1,6 +1,6 @@
 # GMGN Vamp
 
-GMGN Vamp adds token launch and inspection tools to GMGN. It copies token metadata into Flap, Long.xyz, or PONS and sends each launch through the platform that created the source token.
+GMGN Vamp corrects token launches whose configurable fees do not reach holders. It copies the source metadata and defaults the redeploy to holder-first fee routing.
 
 The extension uses your browser wallet for account access and signatures. It does not ask for, import, or store private keys.
 
@@ -8,15 +8,15 @@ The extension uses your browser wallet for account access and signatures. It doe
 
 | GMGN source | Vamp action |
 | --- | --- |
-| BSC token | Opens the built-in Flap composer with copied name, symbol, image, description, and social links |
-| Robinhood token linked to Long.xyz | Opens the Long.xyz create flow and fills the supported metadata fields |
-| Robinhood token linked to PONS | Opens the PONS create flow and fills the supported metadata fields |
+| BSC Flap token with partial holder allocation | Opens Flip Tax, preserving source rates and payment asset while routing 100% of configurable tax to holders |
+| Robinhood token linked to Long.xyz | Opens Long.xyz only to correct and reuse supported metadata |
+| Robinhood token linked to PONS | Opens the extension PONS composer, copies the image through PONS IPFS, launches with a default `0.1` creator purchase for the signing wallet, and enables holder sharing |
 
-Long.xyz and PONS keep control of their pairing assets and launch options. The extension does not reuse Flap's BNB Chain RWA addresses on Robinhood Chain.
+Long.xyz keeps control of its launch options. PONS defaults to the copied source pair when available and reads current V2 launch economics before signing. The extension never reuses Flap's BNB Chain RWA addresses on Robinhood Chain.
 
 ### Token inspection
 
-- Flap and PONS cards show holder-fee routing beside GMGN's tax value. Green means holders receive 100% of the fee. Red means holders receive less than 100%, including 0%.
+- Flap and PONS cards show holder-fee routing beside GMGN's tax value. Flap is green at 100% holder allocation. PONS is green when its creator-fee route reaches holders and red at 0%; its percentage accounts for the protocol and buyback shares.
 - Long.xyz cards show `VERIFIED LONG` for an authentic token and a red warning for a failed authenticity verdict. Network and API failures stay neutral.
 - Flap tokens with partial holder allocation receive a **Flip Tax** action. It preserves the source tax rates and payment asset, then prepares a launch with 100% of tax routed to holders.
 
@@ -29,9 +29,9 @@ The Flap composer supports:
 - buy and sell tax rates
 - creator, burn, holder, and liquidity allocation
 - an optional creator purchase
-- reusable launch templates
+- advanced mechanics behind an optional disclosure
 
-The composer opens with the active template. A successful launch sends the current tab to the new GMGN token page.
+There are no launch templates or generic Flap deploy path. The composer opens with the verified source mechanics and holder-first correction already applied. A successful launch sends the current tab to the new GMGN token page.
 
 ### Discord sidebar controls
 
@@ -78,27 +78,25 @@ After an update, replace or rebuild the extension files, return to `chrome://ext
 ## Use
 
 1. Open a supported GMGN BSC or Robinhood token page.
-2. Click the bat icon labeled **Vamp this token**.
-3. Review the copied metadata and platform options.
+2. Click **Flip Tax** for a partial Flap token, or the bat icon for PONS/Long.
+3. Deploy immediately, or expand metadata/advanced settings to make a correction.
 4. Connect your browser wallet when the launch flow asks.
 5. Review and sign each transaction in the wallet.
 
-Flap launches use the built-in composer. Long.xyz and PONS launches continue on their official create pages. The extension keeps copied metadata available for ten minutes while you choose the pairing asset and fee settings.
+Flap and PONS launch from extension-owned composers. PONS defaults to a `0.1` creator purchase in the selected pair asset; it is editable per launch and executes atomically with the launch. PONS then requires two more wallet confirmations for its holder distributor and fee route. An ERC-20 pair may also require an approval. Long remains an official-form metadata handoff, held for ten minutes while its create flow is completed.
 
 ## Configuration
 
 Click the extension icon to manage:
 
-- the active Flap launch template
-- cached Flap payment assets
-- template JSON import and export
+- packaged Flap payment assets
 - Discord sidebar controls
 
-The payment-asset registry in this screen applies to Flap. Long.xyz and PONS supply their own live pairing lists.
+The packaged payment-asset list applies only to Flap. PONS preserves the source pair when available; Long supplies its own markets.
 
 ## Wallet and permissions
 
-GMGN Vamp calls the wallet provider exposed by the active browser wallet. Flap launches request BNB Smart Chain and ask the wallet to add the chain if needed. Long.xyz and PONS manage their own wallet prompts.
+GMGN Vamp calls the wallet provider exposed by the active browser wallet. Flap launches request BNB Smart Chain. PONS launches request Robinhood Chain. The extension asks the wallet to add either chain when needed; Long manages its own wallet prompts.
 
 The extension requests access to these sites for the listed jobs:
 
@@ -106,7 +104,7 @@ The extension requests access to these sites for the listed jobs:
 | --- | --- |
 | `gmgn.ai` | Add Vamp, Flip Tax, fee-routing, and authenticity controls |
 | `app.long.xyz` | Check Long authenticity and prefill the create flow |
-| `ponsfamily.com` | Prefill the PONS create flow |
+| `ponsfamily.com` | Copy token images to PONS IPFS |
 | Robinhood Chain RPC | Read PONS launch settings and token identity |
 | BNB Chain RPC | Read Flap contracts and confirm transactions |
 | Flap upload service | Upload the selected token image and public metadata |
@@ -125,22 +123,18 @@ npm run package:extension
 
 `npm run package:extension` writes `release/gmgn-vamp-v0.1.0.zip` without development source maps.
 
-Useful focused commands:
+For a focused Playwright run, pass test files directly. The broadcast integration also has a shortcut:
 
 ```powershell
-npm run test:focused
-npm run test:metadata
-npm run test:mechanics
-npm run test:payment-assets
-npm run test:wallet
 npm run test:broadcast
+npx playwright test tests/pons-tax-inspector.spec.ts
 ```
 
 ## Current scope
 
 - GMGN provides the supported token surfaces.
 - Flap launches run on BNB Smart Chain.
-- Long.xyz and PONS launches run through their official Robinhood Chain forms.
+- PONS launches call the official V2 contracts from the extension composer; Long remains an official-form metadata handoff.
 - Site markup changes can require an extension update.
 
 The design notes live in [docs/specs/multi-platform-wallet-launch.md](docs/specs/multi-platform-wallet-launch.md). Architectural decisions live in [docs/adr](docs/adr).

@@ -23,12 +23,12 @@ The image and public metadata must be sent as GraphQL multipart form data to `ht
 
 Non-GMGN remote images require a per-origin optional Chrome permission at launch time; GMGN itself is already required for the extension's supported surfaces. The background accepts only public HTTPS URLs without credentials or custom ports, rejects literal private/link-local/localhost destinations before and after redirects, requires an `image/*` response, and caps both declared and streamed content at 8 MB. These checks reduce the extension's fetch surface; they do not turn arbitrary remote content into trusted content.
 
-## Transaction recovery and shared-wallet policy
+## Transaction recovery and connected-wallet policy
 
 - Readiness reserves `2,500,000` gas units for launch and `100,000` units for each required approval stage at the live gas price, in addition to creator-purchase value and the Portal's 1 gwei ERC-20 value. The final simulated gas/value check runs again immediately before signing.
 - Every reset, approval, and launch uses the RPC's pending nonce and is persisted to `chrome.storage.local` immediately after broadcast. A timeout or browser restart does not clear it. Subsequent readiness reconciles the receipt, transaction visibility, pending nonce, and latest nonce; an ambiguous or replaced hash remains blocked instead of being rebroadcast.
-- Nonce-too-low, replacement, and already-known responses never trigger an automatic replacement. The operator must reconcile the shared wallet before retrying.
-- Chrome profiles and separate extension installations cannot share an atomic browser lock. Durable nonce records and conflict detection prevent blind retries in one installation, but cannot eliminate two simultaneous first broadcasts from separate machines/profiles. Operators using the same team wallet must serialize launches operationally.
+- Nonce-too-low, replacement, and already-known responses never trigger an automatic replacement. The operator must reconcile the connected browser wallet before retrying.
+- Chrome profiles and separate extension installations cannot share an atomic browser lock. Durable nonce records and conflict detection prevent blind retries in one installation, but cannot eliminate two simultaneous first broadcasts from separate machines/profiles. Operators intentionally using the same account must serialize launches operationally.
 
 ## Safe verification protocol
 

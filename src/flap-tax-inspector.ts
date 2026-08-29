@@ -5,7 +5,8 @@ const BADGE_SELECTOR = `[${BADGE_ATTRIBUTE}]`;
 const CARD_SELECTOR = "div[class*='group/a'], [data-testid='trenches-card']";
 const TAX_CHIP_PATTERN = /^Tax\s+\d+(?:\.\d+)?%(?:\s*\/\s*\d+(?:\.\d+)?%)?$/i;
 const CACHE_VERSION = 2;
-const CACHE_TTL_MS = 5 * 60 * 1000;
+const FLAP_CACHE_TTL_MS = 5 * 60 * 1000;
+const PONS_CACHE_TTL_MS = 60 * 1000;
 const BLOCKED_BADGE_EVENTS = ["pointerdown", "mousedown", "click", "dblclick", "touchstart", "contextmenu"] as const;
 
 type TaxTarget = {
@@ -18,8 +19,9 @@ type TaxTarget = {
   surface: "trench" | "detail";
 };
 
-const memoryCache = new Map<string, { savedAt: number; info: FlapTaxInfo }>();
+const memoryCache = new Map<string, { platform: TaxTarget["platform"]; savedAt: number; info: FlapTaxInfo }>();
 let scanTimer: number | undefined;
+let cacheExpiryTimer: number | undefined;
 let scanRunning = false;
 let rescanRequested = false;
 
@@ -43,7 +45,7 @@ export function readCachedFlapTaxInfo(address: string): FlapTaxInfo | undefined 
 }
 
 export function isFlapTaxCacheEntryFresh(savedAt: number, now = Date.now()): boolean {
-  return savedAt > now - CACHE_TTL_MS;
+  return savedAt > now - FLAP_CACHE_TTL_MS;
 }
 
 export function discoverGmgnTaxTargets(
@@ -110,6 +112,7 @@ async function scan(): Promise<void> {
     // Leave GMGN untouched on network or decoding errors; a later mutation/navigation retries.
   } finally {
     scanRunning = false;
+    scheduleNextCacheRefresh();
     if (rescanRequested) scheduleScan(120);
   }
 }
@@ -118,6 +121,21 @@ function scheduleScan(delay: number): void {
   rescanRequested = true;
   if (scanTimer !== undefined || scanRunning || document.visibilityState === "hidden") return;
   scanTimer = window.setTimeout(() => void scan(), delay);
+}
+
+function scheduleNextCacheRefresh(): void {
+  if (cacheExpiryTimer !== undefined) window.clearTimeout(cacheExpiryTimer);
+  cacheExpiryTimer = undefined;
+  const now = Date.now();
+  for (const [key, { platform, savedAt }] of memoryCache) {
+    if (!isTaxCacheEntryFresh(platform, savedAt, now)) memoryCache.delete(key);
+  }
+  if (document.visibilityState === "hidden" || memoryCache.size === 0) return;
+  const expiresAt = Math.min(...Array.from(memoryCache.values(), ({ platform, savedAt }) => savedAt + cacheTtlMs(platform)));
+  cacheExpiryTimer = window.setTimeout(() => {
+    cacheExpiryTimer = undefined;
+    scheduleScan(0);
+  }, Math.max(0, expiresAt - now + 1));
 }
 
 async function hydrate(platform: TaxTarget["platform"], addresses: readonly string[]): Promise<void> {
@@ -129,8 +147,8 @@ async function hydrate(platform: TaxTarget["platform"], addresses: readonly stri
     const entry = cached[cacheKey(platform, address)];
     if (typeof entry !== "object" || entry === null) continue;
     const savedAt = Reflect.get(entry, "savedAt");
-    if (typeof savedAt !== "number" || !isFlapTaxCacheEntryFresh(savedAt)) continue;
-    try { memoryCache.set(memoryKey(platform, address), { savedAt, info: normalizeFlapTaxInfo(Reflect.get(entry, "info")) }); }
+    if (typeof savedAt !== "number" || !isTaxCacheEntryFresh(platform, savedAt)) continue;
+    try { memoryCache.set(memoryKey(platform, address), { platform, savedAt, info: normalizeFlapTaxInfo(Reflect.get(entry, "info")) }); }
     catch { /* Ignore invalid or obsolete cache entries. */ }
   }
 }
@@ -147,7 +165,7 @@ async function persist(platform: TaxTarget["platform"], infoByAddress: Record<st
 function remember(platform: TaxTarget["platform"], infoByAddress: Record<string, FlapTaxInfo>): void {
   const savedAt = Date.now();
   for (const [address, candidate] of Object.entries(infoByAddress)) {
-    memoryCache.set(memoryKey(platform, address), { savedAt, info: normalizeFlapTaxInfo(candidate) });
+    memoryCache.set(memoryKey(platform, address), { platform, savedAt, info: normalizeFlapTaxInfo(candidate) });
   }
 }
 
@@ -155,11 +173,19 @@ function recall(platform: TaxTarget["platform"], address: string): FlapTaxInfo |
   const key = memoryKey(platform, address);
   const entry = memoryCache.get(key);
   if (!entry) return undefined;
-  if (!isFlapTaxCacheEntryFresh(entry.savedAt)) {
+  if (!isTaxCacheEntryFresh(platform, entry.savedAt)) {
     memoryCache.delete(key);
     return undefined;
   }
   return entry.info;
+}
+
+function isTaxCacheEntryFresh(platform: TaxTarget["platform"], savedAt: number, now = Date.now()): boolean {
+  return savedAt > now - cacheTtlMs(platform);
+}
+
+function cacheTtlMs(platform: TaxTarget["platform"]): number {
+  return platform === "pons" ? PONS_CACHE_TTL_MS : FLAP_CACHE_TTL_MS;
 }
 
 function render(target: TaxTarget, info: FlapTaxInfo): void {
@@ -177,7 +203,7 @@ function render(target: TaxTarget, info: FlapTaxInfo): void {
   badge.dataset.address = target.address;
   badge.dataset.platform = target.platform;
   badge.dataset.surface = target.surface;
-  badge.dataset.state = holderBadgeState(info);
+  badge.dataset.state = target.platform === "pons" && info.dividendBps > 0 ? "complete" : holderBadgeState(info);
   const renderKey = `${label}:${target.iconSrc ?? ""}`;
   if (badge.dataset.renderKey !== renderKey) {
     badge.replaceChildren();

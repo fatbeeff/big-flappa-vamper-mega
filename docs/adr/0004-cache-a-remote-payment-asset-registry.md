@@ -1,3 +1,3 @@
-# Cache a remote payment-asset registry
+# Bundle the payment-asset manifest
 
-The extension will render Crypto/RWA payment assets from a bundled and locally cached manifest rather than querying Flap during composer startup or hard-coding the list indefinitely. A minimal backend periodically reconciles Flap availability; the extension refreshes its cache every five hours or on demand and falls back to stale data, trading slight staleness for predictable launch-time performance without introducing a hosted application or signing service.
+The extension renders Crypto/RWA payment assets from one validated manifest bundled into each release. The earlier remote registry design was removed because no authoritative upstream or deployed endpoint existed, and maintaining a server, cache, alarm, and refresh interface without one added failure modes without improving freshness. Asset changes now ship through the normal reviewed release process.

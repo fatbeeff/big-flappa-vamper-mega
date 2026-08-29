@@ -7,8 +7,8 @@ Verified 2026-08-05 against Flap's official developer documentation and launcher
 - Standard non-vault tax allocation is `mktBps + deflationBps + dividendBps + lpBps`, and the Portal requires the four values to total exactly 10,000 basis points.
 - When `dividendBps` is positive, `NewTokenV6Params` also requires a dividend token and minimum share balance. V1 uses one fixed policy: dividends use the selected payment/quote asset and holder eligibility starts at 10,000 launch tokens, Flap's documented minimum. The validated domain value carries both choices explicitly for transaction encoding in Issue #8.
 - A creator purchase may be zero. Its maximum is dynamic (quote asset, wallet balance, and launch curve), so Issue #7 validates a non-negative decimal and leaves amount conversion and the authoritative upper-bound preflight to Issue #8.
-- Asset availability comes from the extension's cached registry. An absent or disabled asset is invalid and cannot be selected.
-- Popup persistence, JSON import, stored-state loading, and the Launch Composer all use the same tax-mechanics invariant boundary. Invalid stored documents fall back to the valid bundled defaults rather than becoming an Active Template.
+- Asset availability comes from the validated manifest packaged with the extension. An absent or disabled asset is invalid and cannot be selected.
+- The Flip Tax composer and pre-broadcast path use the same tax-mechanics invariant boundary. There is no stored template or generic-launch fallback; every draft begins from inspected source mechanics with holder allocation set to 100%.
 
 Sources:
 

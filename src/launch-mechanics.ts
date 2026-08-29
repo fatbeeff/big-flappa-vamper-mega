@@ -1,5 +1,19 @@
-import type { LaunchMechanics } from "./launch-templates";
 import type { PaymentAsset } from "./payment-assets";
+
+export type AllocationBps = {
+  creatorFunds: number;
+  burn: number;
+  dividend: number;
+  liquidity: number;
+};
+
+export type LaunchMechanics = {
+  paymentAssetId: string;
+  buyTaxPercent: number;
+  sellTaxPercent: number;
+  allocationBps: AllocationBps;
+  creatorPurchaseAmount: string;
+};
 
 export const FLAP_TAX_PERCENT_MAX = 10;
 export const FLAP_ALLOCATION_TOTAL_BPS = 10_000;

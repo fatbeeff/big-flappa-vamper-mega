@@ -1,7 +1,8 @@
 import type { LaunchComposer } from "./launch-composer";
+import type { PonsLaunchComposer } from "./pons-launch-composer";
 import type { GmgnSourceTokenAdapter } from "./gmgn-source-token";
 import { readCachedFlapTaxInfo } from "./flap-tax-inspector";
-import { handoffOfficialLaunch, type OfficialLaunchDestination } from "./official-launch-handoff";
+import { handoffOfficialLaunch } from "./official-launch-handoff";
 
 const ACTION_NAME = "Vamp this token";
 const ACTION_SELECTOR = '[data-vamp-action="true"]';
@@ -22,6 +23,7 @@ const ROUTE_CHANGE_EVENT = "vamp:locationchange";
 
 export function installGmgnCaptureBridge(
   launchComposer: LaunchComposer,
+  ponsLaunchComposer: PonsLaunchComposer,
   sourceTokenAdapter: GmgnSourceTokenAdapter,
 ): void {
   let tokenSurfaceRefreshScheduled = false;
@@ -92,8 +94,12 @@ export function installGmgnCaptureBridge(
       const sourceToken = sourceTokenAdapter.resolve(button);
       if (!sourceToken) return;
       const destination = sourceDestination(button);
-      if (!flipTax && destination) {
-        void handoffOfficialLaunch(destination, sourceToken);
+      if (!flipTax && destination === "long") {
+        void handoffOfficialLaunch("long", sourceToken);
+        return;
+      }
+      if (!flipTax && destination === "pons") {
+        ponsLaunchComposer.open(button, sourceToken, readCachedFlapTaxInfo(sourceToken.context.sourceAddress)?.quoteToken);
         return;
       }
       if (flipTax) {
@@ -102,7 +108,6 @@ export function installGmgnCaptureBridge(
         launchComposer.open(button, sourceToken, { kind: "flip-tax", sourceTaxInfo: taxInfo });
         return;
       }
-      launchComposer.open(button, sourceToken);
     };
     const show = () => showTooltip(button, label);
     button.addEventListener("click", openLaunchComposer);
@@ -145,12 +150,16 @@ export function installGmgnCaptureBridge(
         ?? liveBuyContainer;
       if (!insertionReference || !presentationReference) return;
 
+      const destination = sourceDestination(insertionReference as HTMLButtonElement);
       let vamp = actionGroup.querySelector<HTMLButtonElement>(ACTION_SELECTOR);
-      if (!vamp) {
+      if (destination && !vamp) {
         vamp = createPresentationMatchedButton(presentationReference);
         sizeLiveTrenchesAction(vamp, presentationReference, fixtureActions === null);
         configureAction(vamp, "vamp");
         actionGroup.insertBefore(vamp, insertionReference);
+      } else if (!destination) {
+        removeAction(vamp);
+        vamp = null;
       }
 
       const partialBadge = card.querySelector<HTMLElement>(PARTIAL_TAX_BADGE_SELECTOR);
@@ -161,14 +170,14 @@ export function installGmgnCaptureBridge(
         const button = createPresentationMatchedButton(presentationReference);
         sizeLiveTrenchesAction(button, presentationReference, fixtureActions === null);
         configureAction(button, "flip-tax");
-        actionGroup.insertBefore(button, vamp);
+        actionGroup.insertBefore(button, vamp ?? insertionReference);
       } else if (!shouldShowFlipTax) {
         removeAction(flipTax);
       }
     });
   }
 
-  function sourceDestination(button: HTMLButtonElement): OfficialLaunchDestination | null {
+  function sourceDestination(button: HTMLButtonElement): "long" | "pons" | null {
     const surface = button.closest<HTMLElement>(FIXTURE_CARD_SELECTOR) ?? button.closest<HTMLElement>(LIVE_CARD_SELECTOR) ?? document;
     if (surface.querySelector('a[href*="app.long.xyz/tokens/"]')) return "long";
     if (surface.querySelector('a[href*="ponsfamily.com/launchpad/"]')) return "pons";
@@ -208,11 +217,15 @@ export function installGmgnCaptureBridge(
     if (rail) {
       const favorite = rail.querySelector<HTMLButtonElement>('button[aria-label="Favorite"]');
       if (!favorite) return;
+      const destination = sourceDestination(favorite);
       let vamp = rail.querySelector<HTMLButtonElement>(ACTION_SELECTOR);
-      if (!vamp) {
+      if (destination && !vamp) {
         vamp = createPresentationMatchedButton(favorite);
         configureAction(vamp, "vamp");
         favorite.insertAdjacentElement("afterend", vamp);
+      } else if (!destination) {
+        removeAction(vamp);
+        vamp = null;
       }
       syncChartFlipTaxAction(rail, favorite, vamp);
       return;
@@ -231,18 +244,22 @@ export function installGmgnCaptureBridge(
       watch.parentElement?.insertBefore(stack, watch);
       stack.append(watch);
     }
+    const destination = sourceDestination(favorite as HTMLButtonElement);
     let vamp = stack.querySelector<HTMLButtonElement>(ACTION_SELECTOR);
-    if (!vamp) {
+    if (destination && !vamp) {
       vamp = createPresentationMatchedButton(favorite);
       configureAction(vamp, "vamp");
       vamp.style.position = "absolute";
       vamp.style.top = `${Math.max(bounds.height, 20) + 4}px`;
       stack.append(vamp);
+    } else if (!destination) {
+      removeAction(vamp);
+      vamp = null;
     }
     syncChartFlipTaxAction(stack, favorite, vamp);
   }
 
-  function syncChartFlipTaxAction(container: HTMLElement, reference: HTMLElement, vamp: HTMLButtonElement): void {
+  function syncChartFlipTaxAction(container: HTMLElement, reference: HTMLElement, vamp: HTMLButtonElement | null): void {
     const partialBadge = document.querySelector<HTMLElement>(PARTIAL_TAX_BADGE_SELECTOR);
     const sourceInfo = partialBadge?.dataset.address ? readCachedFlapTaxInfo(partialBadge.dataset.address) : undefined;
     const shouldShowFlipTax = !!sourceInfo && !sourceInfo.isUntaxed && sourceInfo.dividendBps < 10_000;
@@ -258,7 +275,7 @@ export function installGmgnCaptureBridge(
         flipTax.style.top = `${Math.max(bounds.height, 20) + 4}px`;
         container.append(flipTax);
       } else {
-        container.insertBefore(flipTax, vamp);
+        container.insertBefore(flipTax, vamp ?? null);
       }
     } else if (!shouldShowFlipTax) {
       removeAction(flipTax);
@@ -266,7 +283,7 @@ export function installGmgnCaptureBridge(
     }
     if (stacked) {
       const width = Math.max(reference.getBoundingClientRect().width, 20);
-      vamp.style.left = flipTax ? `${width + 4}px` : "0";
+      if (vamp) vamp.style.left = flipTax ? `${width + 4}px` : "0";
       container.style.width = `${flipTax ? width * 2 + 4 : width}px`;
     }
   }
@@ -283,6 +300,7 @@ export function installGmgnCaptureBridge(
     });
     hideTooltip();
     launchComposer.dismiss();
+    ponsLaunchComposer.dismiss();
   }
 
   function refreshTokenSurfaceActions(): void {

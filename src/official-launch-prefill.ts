@@ -1,9 +1,7 @@
 import { loadPendingOfficialLaunch, OFFICIAL_LAUNCH_STORAGE_KEY, type OfficialLaunchDestination } from "./official-launch-handoff";
 import type { LaunchMetadataValues } from "./launch-context";
 
-const destination: OfficialLaunchDestination | null = location.hostname === "app.long.xyz"
-  ? "long"
-  : location.hostname === "www.ponsfamily.com" ? "pons" : null;
+const destination: OfficialLaunchDestination | null = location.hostname === "app.long.xyz" ? "long" : null;
 
 if (destination) void install(destination);
 
@@ -13,7 +11,7 @@ async function install(platform: OfficialLaunchDestination): Promise<void> {
   let scheduled = false;
   const fill = () => {
     scheduled = false;
-    const complete = platform === "pons" ? fillPons(pending.metadata) : fillLong(pending.metadata);
+    const complete = fillLong(pending.metadata);
     if (complete) {
       observer.disconnect();
       void chrome.storage.local.remove(OFFICIAL_LAUNCH_STORAGE_KEY);
@@ -26,26 +24,6 @@ async function install(platform: OfficialLaunchDestination): Promise<void> {
   });
   observer.observe(document.documentElement, { childList: true, subtree: true });
   fill();
-}
-
-function fillPons(metadata: LaunchMetadataValues): boolean {
-  const name = labeledControl<HTMLInputElement>("Name", "input");
-  const ticker = labeledControl<HTMLInputElement>("Ticker", "input");
-  if (!name || !ticker) return false;
-  setValue(name, metadata.originalName);
-  setValue(ticker, metadata.originalSymbol);
-  setValue(labeledControl("Description", "textarea"), metadata.description);
-  setValue(labeledControl("X profile handle", "input"), socialHandle(metadata.x, "x.com"));
-  setValue(labeledControl("Telegram public username", "input"), socialHandle(metadata.telegram, "t.me"));
-  void setImage(document.querySelector('input[type="file"]'), metadata.imageUrl);
-  return true;
-}
-
-function labeledControl<T extends HTMLInputElement | HTMLTextAreaElement>(text: string, selector: "input" | "textarea"): T | null {
-  const aria = document.querySelector<T>(`${selector}[aria-label="${text}"]`);
-  if (aria) return aria;
-  const label = Array.from(document.querySelectorAll("label")).find((candidate) => candidate.textContent?.trim().startsWith(text));
-  return label?.querySelector<T>(selector) ?? null;
 }
 
 function fillLong(metadata: LaunchMetadataValues): boolean {
@@ -82,10 +60,4 @@ async function setImage(control: Element | null, url: string): Promise<void> {
     control.files = transfer.files;
     control.dispatchEvent(new Event("change", { bubbles: true }));
   } catch { /* The official form remains ready for manual image selection. */ }
-}
-
-function socialHandle(value: string, host: string): string {
-  if (!value) return "";
-  try { return new URL(value).hostname.replace(/^www\./, "") === host ? new URL(value).pathname.replace(/^\//, "") : value; }
-  catch { return value.replace(/^@/, ""); }
 }

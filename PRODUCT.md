@@ -8,59 +8,48 @@ web
 
 ## Users
 
-Operators who monitor tokens on GMGN and rapidly create related launches on Flap, Long.xyz, or PONS.
+Operators who monitor tokens on GMGN and rapidly correct launches whose configurable fees do not reach holders.
 
 ## Product Purpose
 
-The browser extension turns an existing GMGN token into an editable Flap launch and includes token-inspection and Discord workspace utilities. Success means an Operator can invoke the Vamp Action from a trenches card or token chart, correct a partial holder-tax allocation through Flip Tax, check Long.xyz authenticity on Robinhood token surfaces, reuse the source token's metadata, apply saved advanced Flap mechanics, broadcast the launch with minimal delay, and reduce Discord sidebar clutter when needed.
+GMGN Vamp redeploys a Source Token with its identity and public metadata preserved while defaulting 100% of the platform-configurable fee share to holders. The shortest safe path is the product: one action, one review surface, and only the wallet confirmations required by the launch platform. Metadata and advanced mechanics remain editable when the copied source needs correction.
 
-## Positioning
-
-The product combines the discovery context and metadata already present on GMGN with Flap Crypto/RWA payment-token selection and related launch controls that are otherwise absent from quick-launch workflows.
+This is not a general token launcher. It does not provide neutral or creator-first launch defaults.
 
 ## Operating Context
 
-The Token Surfaces are GMGN's BSC token views and Robinhood token views linked to Long.xyz or PONS. In Trenches, actions appear beside the existing Buy control; on the chart, they appear below the favorite control. Vamp uses the supplied bat icon. When available, the supplied Flip Tax portrait appears directly beside the Vamp Action.
-
-GMGN Robinhood Trenches cards and token detail headers expose Vamp when GMGN links the token to Long.xyz or PONS. Long.xyz-linked tokens also show Long.xyz's authenticity verdict.
+- GMGN BSC Flap surfaces receive Flip Tax only after the inspector verifies a taxed Flap token with less than 100% holder allocation.
+- GMGN Robinhood PONS surfaces receive Vamp and launch through an extension-owned PONS composer.
+- GMGN Robinhood Long.xyz surfaces receive Vamp only to correct and hand off token metadata. Long has no creator-tax or holder-fee configuration in this product.
+- Unsupported chains and unrecognized launch platforms receive no launch action.
 
 ## Capabilities and Constraints
 
-- BSC sources use the Flap tax-token composer; Robinhood sources linked to Long.xyz or PONS use that platform's official launch form.
-- The extension exposes Vamp on BSC and on Robinhood sources linked to Long.xyz or PONS; other chains remain unsupported.
-- Supported BSC Flap tokens receive a holder-tax badge on GMGN. The badge distinguishes full from partial dividend allocation and exposes buy/sell tax rates without requiring Tampermonkey.
-- Robinhood tokens linked to Long.xyz receive a verdict badge on Trenches cards and token detail headers. Green and red reflect only Long.xyz's authoritative verdict; failed checks remain neutral.
-- Flip Tax appears only for a partial holder-tax allocation. It opens an isolated correction draft that preserves the source payment asset and buy/sell rates while setting holder allocation to 100%.
-- Launch Metadata is copied from the selected GMGN token and remains editable.
-- Launch Mechanics include Crypto/RWA payment tokens, creator purchase, non-vault buy/sell tax, and standard tax allocation. Custom vaults, including stock-dividend vaults, are out of v1.
-- One Launch Template is active by default; full mechanics are available in an expandable editor.
-- The composer always uses the Active Template and does not include a template switcher. One-off edits do not mutate it; templates are selected and administered in the extension configuration screen.
-- Team default templates ship with the extension; operator-created templates are stored locally and shared through JSON import/export.
-- Available Crypto/RWA payment assets render from a local cache backed by a minimal remote asset registry. The extension refreshes after five hours or when an Operator forces refresh, and retains stale data when refresh fails.
-- Clicking the browser extension opens a compact configuration screen; forced payment-asset refresh lives there rather than in the Launch Composer.
-- Discord sidebar controls are disabled by default. Operators can enable a manual server-list toggle or narrow-window auto-hide, and can collapse the channel list always or only in narrow windows.
-- Flap Deploy requests connection and signatures from the Operator's injected EVM wallet.
-- After a successful launch, the current tab navigates directly to the new token's GMGN BSC chart page.
-- The extension never imports or persists wallet private keys.
-- Templates do not require a hosted application.
-- J7 integration is deferred.
+- Flap Flip Tax preserves the source payment asset and buy/sell tax rates, sets creator/burn/liquidity allocations to zero, and sets the holder allocation to 100%.
+- The Flap composer opens ready to deploy. Copied metadata and corrected mechanics use collapsed editors for optional changes.
+- There are no launch templates, active presets, template imports, or generic Flap deploy path.
+- PONS copies on-chain name, ticker, logo, description, website, X, and Telegram where available.
+- PONS images are copied to PONS IPFS before launch so the redeploy does not depend on a form-file transfer.
+- PONS launches call the official V2 contracts from the extension composer. Current launch economics are read and pinned immediately before signing.
+- PONS defaults the creator purchase to `0.1` of the selected pair asset. The Operator can change it for each launch or set it to zero. A nonzero purchase is executed atomically with launch for the signing wallet; an ERC-20 pair may first require an approval.
+- PONS holder sharing requires three confirmations after any needed pair-token approval: launch and creator purchase, create the token distributor, and route creator fees to that distributor.
+- PONS defaults creator tax to zero, buyback off, and the copied source pair when inspection data is available. These remain advanced options.
+- Long opens its official create flow and copies the supported metadata. It does not automate pairing, fee receiver, or submission.
+- Long's single optional-link field uses X, then website, then Telegram. Descriptions are limited to 100 characters.
+- Flap and PONS cards show holder-fee routing. Long cards show the official authenticity verdict; failed checks remain neutral.
+- The extension uses the Operator's injected EIP-1193 wallet and never imports or stores private keys.
+- Discord sidebar controls are optional, disabled by default, and isolated from launch behavior.
+- Flap payment assets come from a validated manifest packaged with the extension; updating the list requires an extension release.
 
 ## Brand Commitments
 
-The supplied Vamp and Flip Tax icons identify their respective invocation actions. Injected UI inherits GMGN's dark, dense visual system; restrained red Vamp accents are the only distinct brand layer.
-
-## Evidence on Hand
-
-- GMGN trenches and chart screenshots supplied in the product discussion.
-- Vamp icon assets retained under `public/assets/`.
-- Flip Tax icon asset supplied in the product discussion and retained at `public/assets/flip-tax.png`.
-- Flap launch configuration screenshots supplied in the product discussion.
+The Flip Tax portrait identifies BSC holder-fee corrections. The Vamp bat identifies Robinhood PONS and Long metadata workflows. Injected UI inherits GMGN's dark, dense visual system with restrained red accents.
 
 ## Product Principles
 
+- Holder-first is the invariant, not a preset.
+- Preserve source metadata and mechanics unless the Operator edits them.
+- Keep the default path to one review action plus unavoidable wallet confirmations.
+- Put optional metadata and mechanics behind progressive disclosure.
+- Read mutable platform configuration at launch time.
 - Preserve the Operator's GMGN scanning flow.
-- Copy source metadata first, then allow deliberate editing.
-- Make the active launch mechanics legible without slowing deployment.
-- Prefer asset tiles and bounded sliders over dropdowns and raw metric entry; reserve text fields for identity, URLs, and exact amounts.
-- Keep third-party integrations replaceable.
-- Optimize for trusted internal operation rather than public account management.

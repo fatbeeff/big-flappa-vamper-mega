@@ -70,10 +70,8 @@ test("shows partial and complete holder badges on GMGN while suppressing untaxed
 
   const partialActions = page.locator(`[data-address="${partialAddress}"] [data-testid="card-hover-actions"]`);
   const flipTax = partialActions.getByRole("button", { name: "Flip Tax" });
-  const vamp = partialActions.getByRole("button", { name: "Vamp this token" });
   await expect(flipTax).toHaveCount(1);
-  await expect(vamp).toHaveCount(1);
-  expect(await flipTax.evaluate((button) => button.nextElementSibling?.getAttribute("aria-label"))).toBe("Vamp this token");
+  await expect(partialActions.getByRole("button", { name: "Vamp this token" })).toHaveCount(0);
   await expect(page.locator(`[data-address="${completeAddress}"]`).getByRole("button", { name: "Flip Tax" })).toHaveCount(0);
   await flipTax.focus();
   await expect(page.getByRole("tooltip", { name: "Flip Tax" })).toBeVisible();
@@ -90,9 +88,9 @@ test("shows partial and complete holder badges on GMGN while suppressing untaxed
   expect(rpcRequestCount).toBe(2);
 
   await partialActions.getByRole("button", { name: "Flip Tax" }).click();
-  const composer = page.getByRole("dialog", { name: "Flip Tax Composer" });
+  const composer = page.getByRole("dialog", { name: "Flip Tax" });
   await expect(composer).toBeVisible();
-  await expect(composer.getByRole("heading", { name: "Corrected Launch Mechanics" })).toBeVisible();
+  await expect(composer.getByRole("heading", { name: "Holder-Fee Correction" })).toBeVisible();
   const creatorPurchase = composer.getByRole("group", { name: "Creator purchase amount" });
   await expect(creatorPurchase).toBeVisible();
   await creatorPurchase.getByRole("button", { name: "0.25 BNB" }).click();
@@ -127,28 +125,6 @@ test("keeps an unavailable Source Token payment asset selected and blocks a sile
     functionName: "getTaxTokenInfoV2",
     result: taxInfo({ marketBps: 5000, dividendBps: 5000, buyTaxRate: 200, sellTaxRate: 300, quoteToken: missingQuote }),
   });
-  const popup = await extension.openToolbarConfiguration();
-  await popup.evaluate(async () => chrome.storage.local.set({
-    paymentAssetCacheV1: {
-      manifest: {
-        schemaVersion: 1,
-        generatedAt: "2099-01-01T00:00:00.000Z",
-        assets: [{
-          id: "native-bnb",
-          symbol: "BNB",
-          label: "BNB",
-          category: "crypto",
-          enabled: true,
-          address: "0x0000000000000000000000000000000000000000",
-          decimals: 18,
-        }],
-      },
-      refreshedAt: "2099-01-01T00:00:00.000Z",
-      lastRefreshError: null,
-    },
-  }));
-  await popup.close();
-
   await extension.mockBscRpc(async (route) => {
     const body = route.request().postDataJSON() as Array<{ id: number }> | { id: number; params: [{ data: string }] };
     if (!Array.isArray(body)) {
@@ -175,11 +151,11 @@ test("keeps an unavailable Source Token payment asset selected and blocks a sile
     "https://gmgn.ai/?chain=bsc&tab=trenches",
   );
   await page.getByRole("button", { name: "Flip Tax" }).click();
-  const composer = page.getByRole("dialog", { name: "Flip Tax Composer" });
+  const composer = page.getByRole("dialog", { name: "Flip Tax" });
   await composer.getByText("Review corrected mechanics").click();
   await expect(composer.getByRole("radio", { name: /^MISS/ })).toBeChecked();
   await expect(composer.getByRole("radio", { name: /^MISS/ })).toBeDisabled();
-  await expect(composer.getByText(/Source Token payment asset is not in the current registry/)).toBeVisible();
+  await expect(composer.getByText(/Source Token payment asset is not packaged with this extension/)).toBeVisible();
   await expect(composer.getByRole("button", { name: "Deploy" })).toBeDisabled();
 });
 

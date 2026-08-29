@@ -1,8 +1,5 @@
-import { getActiveTemplate, saveOperatorTemplate } from "./launch-templates";
 import {
   FLAP_MINIMUM_DIVIDEND_BALANCE_TOKENS,
-  launchMechanicsFromResolved,
-  mechanicsFormValues,
   validateLaunchMechanics,
   type LaunchMechanicsField,
   type LaunchMechanicsFormValues,
@@ -22,7 +19,7 @@ import type { FlapTaxInfo } from "./flap-tax-info";
 type MetadataField = keyof LaunchMetadataValues;
 
 export interface LaunchComposer {
-  open(invoker: HTMLButtonElement, sourceToken: ResolvedSourceToken, options?: LaunchComposerOpenOptions): void;
+  open(invoker: HTMLButtonElement, sourceToken: ResolvedSourceToken, options: LaunchComposerOpenOptions): void;
   dismiss(): void;
   readDraft(sourceAddress: string): LaunchDraftSnapshot | undefined;
 }
@@ -41,12 +38,11 @@ export type LaunchDraftSnapshot = {
 };
 
 type LaunchDraft = LaunchDraftSnapshot & {
-  mode: "vamp" | "flip-tax";
-  sourceTaxInfo?: FlapTaxInfo;
+  mode: "flip-tax";
+  sourceTaxInfo: FlapTaxInfo;
   sourceImageSource: LaunchImageSource;
   touched: Set<MetadataField>;
   mechanicsValues?: LaunchMechanicsFormValues;
-  activeTemplateName?: string;
   paymentAssets?: readonly PaymentAsset[];
 };
 
@@ -88,8 +84,7 @@ export function createLaunchComposer(): LaunchComposer {
       .restore { padding: 0 10px; }
       .image-status { flex-basis: 100%; }
       [role="status"] { min-height: 18px; margin-bottom: 10px; color: #b0b4bc; }
-      [data-active-template] { display: grid; gap: 8px; }
-      .template-kicker { color: #989da6; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+      [data-launch-mechanics] { display: grid; gap: 8px; }
       .flip-tax-note { padding: 9px 10px; color: #ffd4d6; background: #36171c; border-radius: 8px; line-height: 1.45; }
       .mechanics-summary { color: #d8dbe0; line-height: 1.5; }
       .creator-purchase-picker { display: grid; gap: 8px; min-width: 0; margin: 3px 0 2px; padding: 11px; background: #17191d; border: 1px solid #34373d; border-radius: 9px; }
@@ -129,13 +124,10 @@ export function createLaunchComposer(): LaunchComposer {
       input[type="range"]::-webkit-slider-runnable-track { height: 4px; background: linear-gradient(90deg, #c33a48 var(--range-progress, 0%), #3a3d44 var(--range-progress, 0%)); border-radius: 2px; }
       input[type="range"]::-webkit-slider-thumb { width: 16px; height: 16px; margin-top: -6px; background: #f5f5f6; border: 3px solid #c33a48; border-radius: 50%; appearance: none; }
       .allocation-heading output.invalid { color: #ff8c94; }
-      .allocation, .mechanics-status, .template-save { grid-column: 1 / -1; }
+      .allocation, .mechanics-status { grid-column: 1 / -1; }
       .field-error { min-height: 0; margin: 0; color: #ff8c94; font-size: 11px; }
       .mechanics-status { min-height: 18px; margin: 0; }
       .mechanics-status.invalid { color: #ff8c94; }
-      .template-save { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; padding-top: 4px; }
-      .template-save[hidden] { display: none; }
-      .save-template { width: 100%; }
       .precision-field { display: grid; gap: 6px; }
       footer { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px; padding: 0 18px 18px; }
       .launch-status { min-height: 18px; margin: 0; }
@@ -158,7 +150,9 @@ export function createLaunchComposer(): LaunchComposer {
             <h2 id="vamp-metadata-heading">Launch Metadata</h2>
             <p role="status" aria-live="polite"></p>
             <p class="translation" hidden></p>
-            <div class="fields">
+            <details>
+              <summary>Edit copied metadata</summary>
+              <div class="fields">
               <label>Name<input name="originalName" autocomplete="off"></label>
               <label>Symbol<input name="originalSymbol" autocomplete="off"></label>
               <label class="wide">Description<textarea name="description"></textarea></label>
@@ -176,9 +170,10 @@ export function createLaunchComposer(): LaunchComposer {
                   </div>
                 </div>
               </div>
-            </div>
+              </div>
+            </details>
           </section>
-          <section aria-labelledby="vamp-mechanics-heading"><h2 id="vamp-mechanics-heading">Launch Mechanics</h2><div data-active-template><p>Loading Active Template…</p></div></section>
+          <section aria-labelledby="vamp-mechanics-heading"><h2 id="vamp-mechanics-heading">Holder-Fee Correction</h2><div data-launch-mechanics><p>Loading source mechanics…</p></div></section>
         </div>
         <footer><p class="launch-status" aria-live="polite">Complete required fields to deploy.</p><button class="deploy" type="button" disabled>Deploy</button></footer>
       </div>
@@ -315,7 +310,7 @@ export function createLaunchComposer(): LaunchComposer {
     deployButton.disabled = true;
     closeButton.disabled = true;
     launchStatus.classList.remove("error");
-    launchStatus.textContent = "Starting Flap preflightâ€¦";
+    launchStatus.textContent = "Starting Flap preflight…";
     const launch: FlapLaunchRequest = {
       metadata: { ...draft.metadata },
       imageSource: { ...draft.imageSource },
@@ -342,7 +337,7 @@ export function createLaunchComposer(): LaunchComposer {
       deployButton.disabled = false;
     });
     if (launch.imageSource.kind === "remote-url") {
-      launchStatus.textContent = "Requesting access to the public image hostâ€¦";
+      launchStatus.textContent = "Requesting access to the public image host…";
       chrome.runtime.sendMessage({ type: "vamp:request-image-origin", url: launch.imageSource.url }, (response: unknown) => {
         const runtimeError = chrome.runtime.lastError;
         if (!runtimeError && typeof response === "object" && response !== null && Reflect.get(response, "ok") === true) {
@@ -364,11 +359,11 @@ export function createLaunchComposer(): LaunchComposer {
   return {
     open(button, sourceToken, options) {
       const { context, identity, enrichment } = sourceToken;
-      const mode = options?.kind ?? "vamp";
+      const mode = "flip-tax";
       invoker = button;
       imageStatus.textContent = "";
       const sourceKey = context.sourceAddress || `ephemeral:${++ephemeralDraftSequence}`;
-      const draftKey = mode === "flip-tax" ? `flip-tax:${sourceKey}` : sourceKey;
+      const draftKey = `flip-tax:${sourceKey}`;
       let draft = drafts.get(draftKey);
       if (!draft) {
         const sourceImageSource = imageSourceFromUrl(context.imageUrl);
@@ -378,7 +373,7 @@ export function createLaunchComposer(): LaunchComposer {
           imageSource: sourceImageSource,
           sourceImageSource,
           mode,
-          ...(options ? { sourceTaxInfo: structuredClone(options.sourceTaxInfo) } : {}),
+          sourceTaxInfo: structuredClone(options.sourceTaxInfo),
           touched: new Set(),
           mechanics: null,
           mechanicsValidation: { valid: false, errors: {} },
@@ -386,13 +381,13 @@ export function createLaunchComposer(): LaunchComposer {
         drafts.set(draftKey, draft);
       } else {
         mergeMissingCapturedValues(draft, context);
-        if (options) draft.sourceTaxInfo = structuredClone(options.sourceTaxInfo);
+        draft.sourceTaxInfo = structuredClone(options.sourceTaxInfo);
       }
       activeDraft = draft;
       host.dataset.composerMode = mode;
-      composerTitle.textContent = mode === "flip-tax" ? "Flip Tax Composer" : "Launch Composer";
-      composerIcon.src = chrome.runtime.getURL(mode === "flip-tax" ? "assets/flip-tax.png" : "assets/vamp-128.png");
-      mechanicsHeading.textContent = mode === "flip-tax" ? "Corrected Launch Mechanics" : "Launch Mechanics";
+      composerTitle.textContent = "Flip Tax";
+      composerIcon.src = chrome.runtime.getURL("assets/flip-tax.png");
+      mechanicsHeading.textContent = "Holder-Fee Correction";
       renderDraft(draft);
       updateDeployState();
       restoreButton.disabled = draft.sourceImageSource.kind === "none";
@@ -405,13 +400,13 @@ export function createLaunchComposer(): LaunchComposer {
         : "";
       translation.hidden = !translation.textContent;
       status.textContent = identity
-        ? mode === "flip-tax" ? "Loading Source Token identity for a 100% holder-tax correction…" : "Loading Source Token identity…"
-        : mode === "flip-tax" ? "Captured metadata ready. Holder allocation will be corrected to 100%." : "Captured metadata ready to edit.";
+        ? "Loading authoritative identity for a 100% holder-fee correction…"
+        : "Copied metadata ready. Holders receive 100% of the configurable fees.";
       host.hidden = false;
       closeButton.focus();
 
       const sequence = ++openSequence;
-      void renderActiveTemplate(sequence);
+      void renderMechanics(sequence);
       identity?.then(
         (resolvedIdentity) => {
           if (sequence !== openSequence || draft !== activeDraft || host.hidden) return;
@@ -423,15 +418,11 @@ export function createLaunchComposer(): LaunchComposer {
             draft.metadata.originalSymbol = resolvedIdentity.symbol;
             setField("originalSymbol", resolvedIdentity.symbol);
           }
-          status.textContent = draft.mode === "flip-tax"
-            ? "Authoritative identity loaded. Holder allocation correction ready."
-            : "Authoritative token identity loaded.";
+          status.textContent = "Authoritative identity loaded. Ready to Flip Tax.";
         },
         () => {
           if (sequence !== openSequence || draft !== activeDraft || host.hidden) return;
-          status.textContent = draft.mode === "flip-tax"
-            ? "Source Token identity could not be loaded. Captured metadata and the tax correction are unchanged."
-            : "Source Token identity could not be loaded. Captured metadata is unchanged.";
+          status.textContent = "Identity lookup failed. Captured metadata and the holder-fee correction are unchanged.";
         },
       );
       enrichment?.then(
@@ -459,7 +450,7 @@ export function createLaunchComposer(): LaunchComposer {
     },
     dismiss,
     readDraft(sourceAddress) {
-      const draft = drafts.get(sourceAddress);
+      const draft = drafts.get(`flip-tax:${sourceAddress}`);
       return draft ? {
         sourceAddress: draft.sourceAddress,
         metadata: { ...draft.metadata },
@@ -491,15 +482,23 @@ export function createLaunchComposer(): LaunchComposer {
     }
   }
 
-  async function renderActiveTemplate(sequence: number): Promise<void> {
-    // Both reads are extension-local. Opening never waits for the registry.
-    const [template, cachedAssets] = await Promise.all([getActiveTemplate(), getComposerPaymentAssets()]);
+  async function renderMechanics(sequence: number): Promise<void> {
+    const paymentAssets = await getComposerPaymentAssets();
     const draft = activeDraft;
     if (sequence !== openSequence || host.hidden || !draft) return;
-    const assets = [...cachedAssets];
+    const assets = [...paymentAssets];
     if (!draft.mechanicsValues) {
-      draft.mechanicsValues = mechanicsFormValues(template.mechanics);
-      if (draft.mode === "flip-tax" && draft.sourceTaxInfo) {
+      draft.mechanicsValues = {
+        paymentAssetId: "native-bnb",
+        buyTaxPercent: "0",
+        sellTaxPercent: "0",
+        creatorFundsBps: "0",
+        burnBps: "0",
+        dividendBps: "10000",
+        liquidityBps: "0",
+        creatorPurchaseAmount: "0",
+      };
+      if (draft.sourceTaxInfo) {
         draft.mechanicsValues.buyTaxPercent = bpsPercent(draft.sourceTaxInfo.buyTaxBps);
         draft.mechanicsValues.sellTaxPercent = bpsPercent(draft.sourceTaxInfo.sellTaxBps);
         draft.mechanicsValues.creatorFundsBps = "0";
@@ -516,23 +515,20 @@ export function createLaunchComposer(): LaunchComposer {
             category: "crypto",
             enabled: false,
             address: draft.sourceTaxInfo.quoteToken as `0x${string}`,
-            unavailableReason: "The Source Token payment asset is not in the current registry. Refresh the Asset Registry or choose a supported asset deliberately.",
+            unavailableReason: "The Source Token payment asset is not packaged with this extension. Choose a supported asset or update the extension.",
           };
           assets.unshift(sourceAsset);
         }
         draft.mechanicsValues.paymentAssetId = sourceAsset.id;
       }
     }
-    draft.activeTemplateName ??= draft.mode === "flip-tax" ? "100% holder allocation" : template.name;
     draft.paymentAssets = assets;
     renderMechanicsEditor(draft);
   }
 
   function renderMechanicsEditor(draft: LaunchDraft): void {
-    const container = shadow.querySelector<HTMLElement>("[data-active-template]")!;
+    const container = shadow.querySelector<HTMLElement>("[data-launch-mechanics]")!;
     container.innerHTML = `
-      <span class="template-kicker"></span>
-      <strong data-template-name></strong>
       <p class="flip-tax-note" hidden></p>
       <p class="mechanics-summary" data-mechanics-summary></p>
       <fieldset class="creator-purchase-picker" hidden>
@@ -561,16 +557,8 @@ export function createLaunchComposer(): LaunchComposer {
           <p class="field-error allocation" id="allocation-error"></p>
           <label class="precision-field">Creator purchase amount<input name="creatorPurchaseAmount" inputmode="decimal" aria-describedby="creatorPurchaseAmount-error"><p class="field-error" id="creatorPurchaseAmount-error"></p></label>
           <p class="mechanics-status" role="status" aria-live="polite"></p>
-          <button class="save-template" type="button">Save as Template</button>
-          <form class="template-save" hidden>
-            <label>Template name<input name="templateName" aria-label="Template title" autocomplete="off"></label>
-            <button type="submit">Save</button>
-            <button type="button" data-cancel-template>Cancel</button>
-          </form>
         </div>
       </details>`;
-    container.querySelector<HTMLElement>(".template-kicker")!.textContent = draft.mode === "flip-tax" ? "Flip Tax correction" : "Active Template";
-    container.querySelector<HTMLElement>("[data-template-name]")!.textContent = draft.activeTemplateName ?? "Active Template";
     const correctionNote = container.querySelector<HTMLElement>(".flip-tax-note")!;
     if (draft.mode === "flip-tax" && draft.sourceTaxInfo) {
       correctionNote.hidden = false;
@@ -605,7 +593,6 @@ export function createLaunchComposer(): LaunchComposer {
       renderMechanicsValidation(container, validation);
       container.querySelector<HTMLElement>("[data-mechanics-summary]")!.textContent = mechanicsSummary(values, assets);
       syncCreatorPurchasePicker(container, values, assets);
-      container.querySelector<HTMLButtonElement>(".save-template")!.disabled = !validation.valid;
       updateDeployState();
     };
     assetPicker.addEventListener("change", update);
@@ -623,45 +610,6 @@ export function createLaunchComposer(): LaunchComposer {
       });
     }
 
-    const saveButton = container.querySelector<HTMLButtonElement>(".save-template")!;
-    const saveForm = container.querySelector<HTMLFormElement>(".template-save")!;
-    const templateName = saveForm.elements.namedItem("templateName") as HTMLInputElement;
-    saveButton.addEventListener("click", () => {
-      saveForm.hidden = false;
-      templateName.focus();
-    });
-    container.querySelector<HTMLButtonElement>("[data-cancel-template]")!.addEventListener("click", () => {
-      saveForm.hidden = true;
-      templateName.value = "";
-    });
-    saveForm.addEventListener("submit", async (event) => {
-      event.preventDefault();
-      update();
-      const validation = draft.mechanicsValidation;
-      const mechanicsStatus = container.querySelector<HTMLElement>(".mechanics-status")!;
-      if (!validation.valid || !validation.mechanics) return;
-      if (!templateName.value.trim()) {
-        mechanicsStatus.textContent = "Enter a template name.";
-        mechanicsStatus.classList.add("invalid");
-        return;
-      }
-      try {
-        await saveOperatorTemplate({
-          id: crypto.randomUUID(),
-          name: templateName.value.trim(),
-          mechanics: launchMechanicsFromResolved(validation.mechanics),
-        });
-        saveForm.hidden = true;
-        templateName.value = "";
-        mechanicsStatus.textContent = "Launch Template saved. It is available in extension configuration.";
-        mechanicsStatus.classList.remove("invalid");
-      } catch (error) {
-        mechanicsStatus.textContent = error instanceof Error
-          ? `Launch Template not saved: ${error.message}`
-          : "Launch Template not saved.";
-        mechanicsStatus.classList.add("invalid");
-      }
-    });
     update();
   }
 }
@@ -722,7 +670,7 @@ function createAssetOption(asset: PaymentAsset, selectedId: string): HTMLLabelEl
 }
 
 function createMissingAssetOption(assetId: string): HTMLLabelElement {
-  return createAssetOption({ id: assetId, symbol: "?", label: "Unavailable asset", category: "crypto", enabled: false, unavailableReason: "This template asset is not in the current registry." }, assetId);
+  return createAssetOption({ id: assetId, symbol: "?", label: "Unavailable asset", category: "crypto", enabled: false, unavailableReason: "This source asset is not packaged with this extension." }, assetId);
 }
 
 function renderRangeValues(container: HTMLElement): void {

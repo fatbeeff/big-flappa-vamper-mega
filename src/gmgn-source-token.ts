@@ -4,7 +4,6 @@ import {
   type LaunchMetadataEnrichment,
   type SourceTokenIdentity,
 } from "./launch-context";
-import type { SourceTokenContractResolver } from "./source-token-contract-resolver";
 
 const FIXTURE_CARD_SELECTOR = '[data-testid="trenches-card"]';
 const LIVE_CARD_SELECTOR = '[href*="/bsc/token/"], [href*="/robinhood/token/"]';
@@ -23,9 +22,7 @@ export interface GmgnSourceTokenAdapter {
   resolve(invoker: HTMLButtonElement): ResolvedSourceToken | undefined;
 }
 
-export function createGmgnSourceTokenAdapter(
-  contractResolver: SourceTokenContractResolver,
-): GmgnSourceTokenAdapter {
+export function createGmgnSourceTokenAdapter(): GmgnSourceTokenAdapter {
   return {
     resolve(invoker) {
       const surface = invoker.closest<HTMLElement>(FIXTURE_CARD_SELECTOR)
@@ -50,12 +47,16 @@ export function createGmgnSourceTokenAdapter(
         translatedSymbol: readText(contextRoot, "[data-token-translation-symbol]") || undefined,
         ...captured,
       };
+      const delayedEnrichment = contextRoot.getAttribute("aria-busy") === "true"
+        ? waitForMetadata(contextRoot, surface, sourceAddress)
+        : undefined;
+      const ponsEnrichment = hasSourceAddress && network === "robinhood" && surface.querySelector('a[href*="ponsfamily.com/launchpad/"]')
+        ? resolvePonsMetadata(sourceAddress).catch(() => ({}))
+        : undefined;
       return {
         context,
-        identity: hasSourceAddress ? contractResolver.resolve(sourceAddress, network) : undefined,
-        enrichment: contextRoot.getAttribute("aria-busy") === "true"
-          ? waitForMetadata(contextRoot, surface, sourceAddress)
-          : undefined,
+        identity: hasSourceAddress ? resolveContractIdentity(sourceAddress, network) : undefined,
+        enrichment: mergeEnrichment(ponsEnrichment, delayedEnrichment),
       };
     },
   };
@@ -70,6 +71,35 @@ function resolveSourceAddress(surface: HTMLElement): string {
   if (hrefAddress) return hrefAddress;
   const routeAddress = new URL(location.href).pathname.match(/\/(?:token\/(?:bsc|robinhood)|(?:bsc|robinhood)\/token)\/(0x[0-9a-f]{40})(?:\/|$)/i)?.[1];
   return routeAddress ?? "";
+}
+
+async function resolvePonsMetadata(address: string): Promise<LaunchMetadataEnrichment> {
+  const response: unknown = await chrome.runtime.sendMessage({ type: "vamp:resolve-pons-metadata", address });
+  const enrichment = typeof response === "object" && response !== null ? Reflect.get(response, "enrichment") : null;
+  if (typeof response !== "object" || response === null || Reflect.get(response, "ok") !== true
+    || typeof enrichment !== "object" || enrichment === null) {
+    throw new Error("PONS Launch Metadata resolution failed");
+  }
+  return nonEmptyMetadata(enrichment as LaunchMetadataEnrichment);
+}
+
+function mergeEnrichment(
+  first: Promise<LaunchMetadataEnrichment> | undefined,
+  second: Promise<LaunchMetadataEnrichment> | undefined,
+): Promise<LaunchMetadataEnrichment> | undefined {
+  if (!first) return second;
+  if (!second) return first;
+  return Promise.all([first, second]).then(([left, right]) => ({ ...left, ...right }));
+}
+
+async function resolveContractIdentity(address: string, network: "bsc" | "robinhood"): Promise<SourceTokenIdentity> {
+  const response: unknown = await chrome.runtime.sendMessage({ type: "vamp:resolve-source-token", address, network });
+  if (typeof response !== "object" || response === null || Reflect.get(response, "ok") !== true) throw new Error("Source Token identity resolution failed");
+  const identity = Reflect.get(response, "identity");
+  if (typeof identity !== "object" || identity === null || typeof Reflect.get(identity, "name") !== "string" || typeof Reflect.get(identity, "symbol") !== "string") {
+    throw new Error("Source Token identity resolution failed");
+  }
+  return identity as SourceTokenIdentity;
 }
 
 function sourceNetwork(surface: HTMLElement): "bsc" | "robinhood" {

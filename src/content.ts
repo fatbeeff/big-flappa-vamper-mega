@@ -1,12 +1,13 @@
 import { installGmgnCaptureBridge } from "./gmgn-capture-bridge";
 import { createGmgnSourceTokenAdapter } from "./gmgn-source-token";
 import { createLaunchComposer } from "./launch-composer";
-import { createSourceTokenContractResolver } from "./source-token-contract-resolver";
 import { installFlapTaxInspector } from "./flap-tax-inspector";
 import { installLongAuthenticityInspector } from "./long-authenticity-inspector";
+import { createPonsLaunchComposer } from "./pons-launch-composer";
 
 const launchComposer = createLaunchComposer();
-const sourceTokenAdapter = createGmgnSourceTokenAdapter(createSourceTokenContractResolver());
-installGmgnCaptureBridge(launchComposer, sourceTokenAdapter);
+const ponsLaunchComposer = createPonsLaunchComposer();
+const sourceTokenAdapter = createGmgnSourceTokenAdapter();
+installGmgnCaptureBridge(launchComposer, ponsLaunchComposer, sourceTokenAdapter);
 installFlapTaxInspector();
 installLongAuthenticityInspector();

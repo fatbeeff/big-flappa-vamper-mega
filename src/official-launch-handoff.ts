@@ -2,7 +2,7 @@ import type { ResolvedSourceToken } from "./gmgn-source-token";
 import type { LaunchMetadataValues } from "./launch-context";
 
 export const OFFICIAL_LAUNCH_STORAGE_KEY = "pendingOfficialLaunchV1";
-export type OfficialLaunchDestination = "long" | "pons";
+export type OfficialLaunchDestination = "long";
 
 export type PendingOfficialLaunch = {
   version: 1;

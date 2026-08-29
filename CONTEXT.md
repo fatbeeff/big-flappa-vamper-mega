@@ -1,6 +1,6 @@
-# Token Clone Launching
+# Holder-Fee Correction
 
-This context covers turning an existing token discovered on a third-party market interface into an editable, configurable Flap token launch.
+This context covers redeploying a token discovered on GMGN while defaulting the platform-configurable fee share to holders.
 
 ## Language
 
@@ -21,12 +21,16 @@ The source token identity copied from a Token Surface, including its original on
 _Avoid_: Launch settings, token mechanics
 
 **Launch Mechanics**:
-The behavioral Flap configuration owned by the extension, including Crypto/RWA payment token, tax settings, creator purchase, and the selected Launch Template.
+The behavioral launch configuration owned by the extension, including payment token, tax settings, creator purchase, and holder-fee routing.
 _Avoid_: Token metrics, metadata
 
-**Launch Template**:
-A reusable set of launch configuration choices, such as payment token, tax settings, and creator purchase. One template is the Active Template used by default; templates do not contain the unique source metadata or final token identity for a particular launch.
-_Avoid_: Preset, deploy type
+**Holder-Fee Correction**:
+A redeploy that retains a Source Token's Launch Metadata while defaulting 100% of the platform-configurable fee share to holders. The Operator may edit the copied metadata and launch choices before submission.
+_Avoid_: Neutral clone, exact clone
+
+**Holder Fee Distributor**:
+A platform-specific fee recipient that routes the configurable creator fee share pro rata to eligible holders, leaving no creator claim.
+_Avoid_: Creator wallet, treasury
 
 **Token Surface**:
 A third-party interface where an Operator discovers a Source Token and invokes the Vamp Action. The initial Token Surfaces are GMGN BSC trenches cards and their BSC token chart pages.
@@ -37,13 +41,13 @@ The existing token selected on a Token Surface whose Launch Metadata seeds a new
 _Avoid_: Original token, target token
 
 **Vamp Action**:
-The extension action, represented by the supplied Vamp icon, that starts cloning a Source Token into a new editable launch.
+The Robinhood action, represented by the supplied Vamp icon, that starts a PONS holder-fee correction or a Long metadata correction. BSC Flap corrections use the explicit Flip Tax action.
 _Avoid_: Buy, copy trade, deploy
 
 **Operator**:
-A trusted member of the internal group authorized to configure launches and control the Shared Deployment Wallet.
+A trusted member of the internal group authorized to configure and initiate launches.
 _Avoid_: Customer, public user
 
-**Shared Deployment Wallet**:
-The single wallet identity from which every Operator initiates token launches.
-_Avoid_: User wallet, default dev wallet
+**Connected Browser Wallet**:
+The EIP-1193 wallet selected by the Operator for Flap account access and transaction signatures. The extension never imports or stores its private key.
+_Avoid_: Shared wallet, stored wallet, default dev wallet

@@ -2,7 +2,6 @@ import { chromium, expect, test as base, type BrowserContext, type Page, type Ro
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { trenchesFixture } from "../fixtures/gmgn";
 
 export type ExtensionHarness = {
   openGmgnTokenSurface(html: string, url: string): Promise<Page>;
@@ -52,16 +51,8 @@ export const test = base.extend<{ extension: ExtensionHarness }>({
     }
 
     async function openToolbarConfiguration(): Promise<Page> {
-      const tokenSurface = await openGmgnTokenSurface(
-        trenchesFixture,
-        "https://gmgn.ai/?chain=bsc&tab=trenches",
-      );
-      const vampIcon = tokenSurface.getByRole("button", { name: "Vamp this token" }).locator("img");
-      await vampIcon.waitFor();
-      const iconSource = await vampIcon.getAttribute("src");
-      if (!iconSource) throw new Error("The loaded extension did not expose its Vamp icon URL");
-
-      const extensionId = new URL(iconSource).host;
+      const worker = context.serviceWorkers()[0] ?? await context.waitForEvent("serviceworker");
+      const extensionId = new URL(worker.url()).host;
       const popup = await context.newPage();
       await popup.goto(`chrome-extension://${extensionId}/popup.html`);
       return popup;
