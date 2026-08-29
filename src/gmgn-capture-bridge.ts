@@ -105,7 +105,7 @@ export function installGmgnCaptureBridge(
       if (flipTax) {
         const taxInfo = readCachedFlapTaxInfo(sourceToken.context.sourceAddress);
         if (!taxInfo || taxInfo.isUntaxed || taxInfo.dividendBps === 10_000) return;
-        launchComposer.open(button, sourceToken, { kind: "flip-tax", sourceTaxInfo: taxInfo });
+        launchComposer.open(button, sourceToken, { sourceTaxInfo: taxInfo });
         return;
       }
     };

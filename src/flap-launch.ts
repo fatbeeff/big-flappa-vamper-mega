@@ -28,13 +28,13 @@ import {
   assertDeployableMetadata,
   buildNewTokenV6Params,
   findTaxTokenSalt,
+  gmgnBscTokenUrl,
   resolvePaymentAsset,
   tokenAddressFromReceipt,
   type FlapLaunchRequest,
 } from "./flap-contract";
-import { getComposerPaymentAssets } from "./payment-assets";
+import { BUNDLED_PAYMENT_ASSETS, type PaymentAsset } from "./payment-assets";
 import { clearPendingFlapTransaction, persistPendingFlapTransaction, reconcilePendingFlapTransaction, type PendingTransactionStage } from "./pending-launch";
-import { gmgnBscTokenUrl } from "./flap-contract";
 
 export type LaunchPhase = "preflight" | "metadata" | "approval" | "signing" | "confirming";
 export type FlapLaunchResult = { transactionHash: Hash; tokenAddress: Address };
@@ -47,7 +47,7 @@ export type FlapLaunchDependencies = {
   walletClient: WalletClient;
   account: Account;
   uploadMetadata(request: FlapLaunchRequest): Promise<string>;
-  paymentAssets: Awaited<ReturnType<typeof getComposerPaymentAssets>>;
+  paymentAssets: readonly PaymentAsset[];
   findSalt(metadataCid: string): Promise<`0x${string}`>;
   report(phase: LaunchPhase, message: string): void;
   durableTransactions?: boolean;
@@ -250,7 +250,7 @@ export async function createProductionDependencies(
     publicClient,
     walletClient,
     account,
-    paymentAssets: await getComposerPaymentAssets(),
+    paymentAssets: BUNDLED_PAYMENT_ASSETS,
     uploadMetadata: () => uploadFlapMetadata(request),
     findSalt: findTaxTokenSalt,
     report,

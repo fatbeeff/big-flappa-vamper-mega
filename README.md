@@ -2,7 +2,7 @@
 
 GMGN Vamp corrects token launches whose configurable fees do not reach holders. It copies the source metadata and defaults the redeploy to holder-first fee routing.
 
-The extension uses your browser wallet for account access and signatures. It does not ask for, import, or store private keys.
+Your browser wallet handles account access and signatures. The extension stores no private keys.
 
 ## Features
 
@@ -31,11 +31,7 @@ The Flap composer supports:
 - an optional creator purchase
 - advanced mechanics behind an optional disclosure
 
-There are no launch templates or generic Flap deploy path. The composer opens with the verified source mechanics and holder-first correction already applied. A successful launch sends the current tab to the new GMGN token page.
-
-### Discord sidebar controls
-
-The toolbar configuration includes optional Discord layout controls. You can hide the server list or collapse channels in narrow windows. The Discord feature starts disabled and does not interact with launch or wallet code.
+The composer opens with verified source mechanics and the holder-first correction applied. A successful launch sends the current tab to the new GMGN token page.
 
 ## Requirements
 
@@ -70,8 +66,7 @@ The build writes the unpacked extension to `dist`.
 3. Click **Load unpacked**.
 4. Select the extracted release folder or the generated `dist` folder. Select the folder that contains `manifest.json`, not the repository root.
 5. Confirm that **GMGN Vamp** appears on the extensions page.
-6. Pin GMGN Vamp from Chrome's Extensions menu.
-7. Refresh any open GMGN, Long.xyz, PONS, or Discord tabs.
+6. Refresh any open GMGN, Long.xyz, or PONS tabs.
 
 After an update, replace or rebuild the extension files, return to `chrome://extensions`, and click the reload icon on the GMGN Vamp card.
 
@@ -84,15 +79,6 @@ After an update, replace or rebuild the extension files, return to `chrome://ext
 5. Review and sign each transaction in the wallet.
 
 Flap and PONS launch from extension-owned composers. PONS defaults to a `0.1` creator purchase in the selected pair asset; it is editable per launch and executes atomically with the launch. PONS then requires two more wallet confirmations for its holder distributor and fee route. An ERC-20 pair may also require an approval. Long remains an official-form metadata handoff, held for ten minutes while its create flow is completed.
-
-## Configuration
-
-Click the extension icon to manage:
-
-- packaged Flap payment assets
-- Discord sidebar controls
-
-The packaged payment-asset list applies only to Flap. PONS preserves the source pair when available; Long supplies its own markets.
 
 ## Wallet and permissions
 
@@ -108,7 +94,6 @@ The extension requests access to these sites for the listed jobs:
 | Robinhood Chain RPC | Read PONS launch settings and token identity |
 | BNB Chain RPC | Read Flap contracts and confirm transactions |
 | Flap upload service | Upload the selected token image and public metadata |
-| `discord.com` | Apply the optional sidebar controls |
 
 Chrome may ask for access to a token image host when Flap needs to upload an image from that host. The extension requests that origin at deploy time.
 
@@ -123,10 +108,9 @@ npm run package:extension
 
 `npm run package:extension` writes `release/gmgn-vamp-v0.1.0.zip` without development source maps.
 
-For a focused Playwright run, pass test files directly. The broadcast integration also has a shortcut:
+For a focused Playwright run, pass test files directly:
 
 ```powershell
-npm run test:broadcast
 npx playwright test tests/pons-tax-inspector.spec.ts
 ```
 

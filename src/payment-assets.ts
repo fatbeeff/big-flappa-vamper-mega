@@ -28,10 +28,6 @@ export function validatePaymentAssetManifest(input: unknown): PaymentAssetManife
   return { schemaVersion: 1, generatedAt: input.generatedAt, assets };
 }
 
-export async function getComposerPaymentAssets(): Promise<readonly PaymentAsset[]> {
-  return BUNDLED_PAYMENT_ASSETS;
-}
-
 export function paymentAssetLabel(id: string, assets: readonly PaymentAsset[] = BUNDLED_PAYMENT_ASSETS): string {
   return assets.find((asset) => asset.id === id)?.label ?? id;
 }

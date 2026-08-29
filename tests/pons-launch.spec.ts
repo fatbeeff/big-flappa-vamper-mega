@@ -1,18 +1,7 @@
 import { decodeFunctionData } from "viem";
 import { expect, test } from "@playwright/test";
-import { encodePonsFeeSharingCalls, parsePonsCreatorPurchase, PONS_LAUNCH_ABI, uploadPonsImage } from "../src/pons-launch";
+import { encodePonsFeeSharingCalls, parsePonsCreatorPurchase, PONS_LAUNCH_ABI } from "../src/pons-launch";
 import { uploadPonsImageFromPonsOrigin, type PonsUploadBrowser } from "../src/pons-site-upload";
-
-test("uploads the copied image to PONS IPFS", async () => {
-  const uploads: File[] = [];
-  const uri = await uploadPonsImage({ imageSource: { kind: "remote-url", url: "https://images.example/token.png" } }, async (input, init) => {
-    if (String(input) === "https://images.example/token.png") return new Response(new Uint8Array([1, 2, 3]), { status: 200, headers: { "content-type": "image/png" } });
-    uploads.push((init?.body as FormData).get("image") as File);
-    return Response.json({ uri: "ipfs://bafy-token-image" });
-  });
-  expect(uri).toBe("ipfs://bafy-token-image");
-  expect(uploads[0]?.type).toBe("image/png");
-});
 
 test("uses PONS's distributor and fee-recipient calls for holder sharing", () => {
   const token = "0x1111111111111111111111111111111111111111";

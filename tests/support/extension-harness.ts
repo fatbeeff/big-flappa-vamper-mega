@@ -5,9 +5,7 @@ import path from "node:path";
 
 export type ExtensionHarness = {
   openGmgnTokenSurface(html: string, url: string): Promise<Page>;
-  openDiscordSurface(html: string, url?: string): Promise<Page>;
-  openToolbarConfiguration(): Promise<Page>;
-  restartBrowser(): Promise<void>;
+  setExtensionStorage(entries: Record<string, unknown>): Promise<void>;
   mockBscRpc(handler: (route: Route) => Promise<void> | void): Promise<void>;
   mockRobinhoodRpc(handler: (route: Route) => Promise<void> | void): Promise<void>;
   mockLongApi(handler: (route: Route) => Promise<void> | void): Promise<void>;
@@ -18,7 +16,7 @@ export type ExtensionHarness = {
 export const test = base.extend<{ extension: ExtensionHarness }>({
   extension: async ({}, use) => {
     const userDataDirectory = await mkdtemp(path.join(os.tmpdir(), "gmgn-vamp-"));
-    let context = await launchExtension(userDataDirectory);
+    const context = await launchExtension(userDataDirectory);
 
     async function openGmgnTokenSurface(html: string, url: string): Promise<Page> {
       await context.route("https://gmgn.ai/**", (route) => {
@@ -36,31 +34,9 @@ export const test = base.extend<{ extension: ExtensionHarness }>({
       return page;
     }
 
-    async function openDiscordSurface(
-      html: string,
-      url = "https://discord.com/channels/123/456",
-    ): Promise<Page> {
-      await context.route("https://discord.com/**", (route) => route.fulfill({
-        status: 200,
-        contentType: "text/html",
-        body: html,
-      }));
-      const page = await context.newPage();
-      await page.goto(url);
-      return page;
-    }
-
-    async function openToolbarConfiguration(): Promise<Page> {
+    async function setExtensionStorage(entries: Record<string, unknown>): Promise<void> {
       const worker = context.serviceWorkers()[0] ?? await context.waitForEvent("serviceworker");
-      const extensionId = new URL(worker.url()).host;
-      const popup = await context.newPage();
-      await popup.goto(`chrome-extension://${extensionId}/popup.html`);
-      return popup;
-    }
-
-    async function restartBrowser(): Promise<void> {
-      await context.close();
-      context = await launchExtension(userDataDirectory);
+      await worker.evaluate((values) => chrome.storage.local.set(values), entries);
     }
 
     async function mockBscRpc(handler: (route: Route) => Promise<void> | void): Promise<void> {
@@ -112,7 +88,7 @@ export const test = base.extend<{ extension: ExtensionHarness }>({
       });
     }
 
-    await use({ openGmgnTokenSurface, openDiscordSurface, openToolbarConfiguration, restartBrowser, mockBscRpc, mockRobinhoodRpc, mockLongApi, setNetworkOffline, installInjectedWallet });
+    await use({ openGmgnTokenSurface, setExtensionStorage, mockBscRpc, mockRobinhoodRpc, mockLongApi, setNetworkOffline, installInjectedWallet });
     await context.close();
     await rm(userDataDirectory, { recursive: true, force: true });
   },

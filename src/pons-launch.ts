@@ -14,7 +14,6 @@ import {
   type Hex,
 } from "viem";
 import type { FlapLaunchRequest } from "./flap-contract";
-import { tokenImageFile } from "./flap-launch";
 import { PONS_DISTRIBUTOR_FACTORY, PONS_V2_FACTORY, ROBINHOOD_RPC_URL } from "./pons-tax-info";
 
 export const PONS_CHAIN_ID = 4663;
@@ -95,7 +94,7 @@ export type PonsLaunchRequest = Pick<FlapLaunchRequest, "metadata" | "imageSourc
 
 export type PonsLaunchResult = { transactionHash: Hash; tokenAddress: Address; holderFeesEnabled: true };
 export type PonsLaunchReport = (phase: string, message: string) => void;
-export type PonsImageUploader = (request: Pick<PonsLaunchRequest, "imageSource">) => Promise<string>;
+type PonsImageUploader = (request: Pick<PonsLaunchRequest, "imageSource">) => Promise<string>;
 
 export class PonsPostLaunchError extends Error {
   constructor(message: string, readonly tokenAddress: Address, readonly transactionHash: Hash) {
@@ -107,8 +106,8 @@ export class PonsPostLaunchError extends Error {
 export async function launchPonsToken(
   request: PonsLaunchRequest,
   provider: { request(args: { method: string; params?: unknown }): Promise<unknown> },
-  report: PonsLaunchReport = () => undefined,
-  uploadImage: PonsImageUploader = uploadPonsImage,
+  report: PonsLaunchReport,
+  uploadImage: PonsImageUploader,
 ): Promise<PonsLaunchResult> {
   assertPonsRequest(request);
   const accounts = await provider.request({ method: "eth_requestAccounts" });
@@ -205,21 +204,6 @@ export async function launchPonsToken(
     throw new PonsPostLaunchError(`The token launched, but holder fee sharing is incomplete: ${detail}. Finish it from the PONS token page; do not launch again.`, tokenAddress, transactionHash);
   }
   return { transactionHash, tokenAddress, holderFeesEnabled: true };
-}
-
-export async function uploadPonsImage(
-  request: Pick<PonsLaunchRequest, "imageSource">,
-  requestFetch: typeof fetch = fetch,
-): Promise<string> {
-  const file = await tokenImageFile(request, requestFetch);
-  if (file.size > PONS_MAX_IMAGE_BYTES) throw new Error("PONS token images must be smaller than 5 MB.");
-  const form = new FormData();
-  form.append("image", file);
-  const response = await requestFetch(PONS_IMAGE_UPLOAD_ENDPOINT, { method: "POST", body: form });
-  const payload = await response.json().catch(() => null) as { uri?: unknown; error?: unknown } | null;
-  if (!response.ok) throw new Error(typeof payload?.error === "string" ? payload.error : `PONS image upload failed with HTTP ${response.status}.`);
-  if (typeof payload?.uri !== "string" || !/^ipfs:\/\/[a-zA-Z0-9]+/.test(payload.uri)) throw new Error("PONS image upload returned an invalid IPFS URI.");
-  return payload.uri;
 }
 
 function assertPonsRequest(request: PonsLaunchRequest): void {

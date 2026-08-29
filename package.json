@@ -8,7 +8,6 @@
     "package:extension": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-extension.ps1",
     "typecheck": "tsc --noEmit",
     "test": "playwright test",
-    "test:broadcast": "playwright test tests/flap-broadcast.contract.spec.ts tests/flap-hardening.contract.spec.ts tests/flap-broadcast.spec.ts tests/flap-erc20-browser.spec.ts",
     "smoke:readonly": "node scripts/smoke-readonly.mjs"
   },
   "devDependencies": {

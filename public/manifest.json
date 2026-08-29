@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "GMGN Vamp",
-  "description": "Launch GMGN tokens through Flap, Long.xyz, or PONS with copied metadata and a browser wallet.",
+  "description": "Correct token metadata and route configurable launch fees to holders from GMGN.",
   "version": "0.1.0",
   "permissions": ["storage", "scripting"],
   "icons": {
@@ -10,20 +10,11 @@
     "48": "assets/vamp-48.png",
     "128": "assets/vamp-128.png"
   },
-  "action": {
-    "default_title": "GMGN Vamp configuration",
-    "default_popup": "popup.html",
-    "default_icon": {
-      "16": "assets/vamp-16.png",
-      "32": "assets/vamp-32.png"
-    }
-  },
   "background": {
     "service_worker": "background.js"
   },
   "host_permissions": [
     "https://bsc-dataseed.bnbchain.org/*",
-    "https://discord.com/*",
     "https://funcs.flap.sh/*",
     "https://gmgn.ai/*",
     "https://app.long.xyz/*",
@@ -42,12 +33,6 @@
       "matches": ["https://gmgn.ai/*"],
       "css": ["flap-tax-inspector.css"],
       "js": ["content.js"],
-      "run_at": "document_idle"
-    },
-    {
-      "matches": ["https://discord.com/*"],
-      "css": ["discord-sidebar.css"],
-      "js": ["discord-sidebar.js"],
       "run_at": "document_idle"
     },
     {

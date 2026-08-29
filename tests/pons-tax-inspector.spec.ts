@@ -135,20 +135,19 @@ test("shows a red zero-holder badge when a PONS RWA pair does not route fees to 
 });
 
 test("refreshes a cached red PONS badge when its on-chain fee routing changes", async ({ extension }) => {
-  const popup = await extension.openToolbarConfiguration();
-  await popup.evaluate(async ({ key, savedAt, info }) => chrome.storage.local.set({ [key]: { savedAt, info } }), {
-    key: `holder-tax-inspector:v2:pons:${token}`,
-    savedAt: Date.now() - 57_000,
-    info: normalizePonsHolderTaxInfo({
-      feeBps: 100,
-      creatorTaxBps: 0,
-      pairToken,
-      quoteSymbol: "GOOGL",
-      holderFeeSharing: false,
-      protocolFeeShareBps: 3_000,
-    }),
+  await extension.setExtensionStorage({
+    [`holder-tax-inspector:v2:pons:${token}`]: {
+      savedAt: Date.now() - 57_000,
+      info: normalizePonsHolderTaxInfo({
+        feeBps: 100,
+        creatorTaxBps: 0,
+        pairToken,
+        quoteSymbol: "GOOGL",
+        holderFeeSharing: false,
+        protocolFeeShareBps: 3_000,
+      }),
+    },
   });
-  await popup.close();
 
   await extension.mockRobinhoodRpc(async (route) => {
     const body = route.request().postDataJSON() as Array<{ id: number }>;

@@ -12,9 +12,9 @@ Operators who monitor tokens on GMGN and rapidly correct launches whose configur
 
 ## Product Purpose
 
-GMGN Vamp redeploys a Source Token with its identity and public metadata preserved while defaulting 100% of the platform-configurable fee share to holders. The shortest safe path is the product: one action, one review surface, and only the wallet confirmations required by the launch platform. Metadata and advanced mechanics remain editable when the copied source needs correction.
+GMGN Vamp redeploys a Source Token with its identity and public metadata preserved while routing 100% of the platform-configurable fee share to holders. The default path uses one action, one review screen, and the wallet confirmations required by the launch platform. Operators can edit copied metadata and advanced mechanics before launch.
 
-This is not a general token launcher. It does not provide neutral or creator-first launch defaults.
+The product supports holder-first corrections rather than general token launches.
 
 ## Operating Context
 
@@ -27,7 +27,7 @@ This is not a general token launcher. It does not provide neutral or creator-fir
 
 - Flap Flip Tax preserves the source payment asset and buy/sell tax rates, sets creator/burn/liquidity allocations to zero, and sets the holder allocation to 100%.
 - The Flap composer opens ready to deploy. Copied metadata and corrected mechanics use collapsed editors for optional changes.
-- There are no launch templates, active presets, template imports, or generic Flap deploy path.
+- Flap supports only inspected holder-fee corrections; it has no templates or generic deploy path.
 - PONS copies on-chain name, ticker, logo, description, website, X, and Telegram where available.
 - PONS images are copied to PONS IPFS before launch so the redeploy does not depend on a form-file transfer.
 - PONS launches call the official V2 contracts from the extension composer. Current launch economics are read and pinned immediately before signing.
@@ -38,7 +38,6 @@ This is not a general token launcher. It does not provide neutral or creator-fir
 - Long's single optional-link field uses X, then website, then Telegram. Descriptions are limited to 100 characters.
 - Flap and PONS cards show holder-fee routing. Long cards show the official authenticity verdict; failed checks remain neutral.
 - The extension uses the Operator's injected EIP-1193 wallet and never imports or stores private keys.
-- Discord sidebar controls are optional, disabled by default, and isolated from launch behavior.
 - Flap payment assets come from a validated manifest packaged with the extension; updating the list requires an extension release.
 
 ## Brand Commitments

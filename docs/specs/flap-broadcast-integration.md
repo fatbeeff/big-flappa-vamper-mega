@@ -6,6 +6,7 @@ Verified 2026-08-05. This note records the deployment-critical facts used by the
 
 - The BNB Portal verified on 2026-08-05 is `0xe2cE6ab80874Fa9Fa2aAE65D277Dd6B8e65C9De0`; the Tax Token V3 implementation is `0x024f18294970B5c76c0691b87f138A0317156422`. Flap's address page displayed a v5.8.6 label while a read-only mainnet `version()` call returned `v5.16.1`; the implementation therefore treats on-chain simulation as the final compatibility gate rather than treating the page label as current. [Flap deployed addresses](https://docs.flap.sh/flap/developers/deployed-contract-addresses)
 - New tax tokens use `newTokenV6`, `TOKEN_TAXED_V3 = 6`, `V2_MIGRATOR = 1`, and the exact 26-field tuple encoded in `src/flap-contract.ts`. BSC uses `DEX0 = 0`; the launcher uses `FOUR_FIFTHS = 1` and the standard LP profile `0`. Tax rates are basis points, standard allocations total 10,000 bps, and Tax V3 salts predict a `7777` suffix against the V3 implementation. [Flap Portal launcher guide and full IPortal interface](https://docs.flap.sh/flap/developers/token-launcher-developers/launch-token-through-portal.md)
+- Flap accepts independent buy and sell rates from 0% through 10% at 0.01% precision, with at least one rate above zero. Holder dividends use the selected quote asset and Flap's 10,000-token minimum eligibility balance. The composer rejects absent, disabled, or invalid bundled payment assets.
 - Native creator purchase uses `quoteAmt == msg.value`. ERC-20/RWA creator purchase uses quote-token base units, empty permit data in the approval path, and the Portal-required `1 gwei` native value. The extension verifies `getQuoteTokenConfiguration(asset).enabled == 1` immediately before launch.
 - `TokenCreated(uint256,address,uint256,address,string,string,string)` has no indexed arguments. The extension decodes the confirmed Portal log and uses its fourth ABI value, `token`, rather than a predicted address. [Flap event indexing guide](https://docs.flap.sh/flap/developers/wallet-and-terminal-and-bot-developers/index-token-created-events)
 
@@ -32,7 +33,7 @@ Non-GMGN remote images require a per-origin optional Chrome permission at launch
 
 ## Safe verification protocol
 
-1. Run `npm run typecheck`, `npm run build`, `npm run test:broadcast`, and `npm run smoke:readonly` from a clean checkout.
+1. Run `npm run typecheck`, `npm run build`, `npm test`, and `npm run smoke:readonly` from a clean checkout.
 2. The smoke script checks chain 56, deployed Portal code, Tax Token V3 implementation code, live Portal version/nonce, asset code/decimals, and live Flap quote-asset enablement. It has no private-key input and contains no signing or send-transaction method.
 3. Load `dist/` unpacked, open `https://gmgn.ai/?chain=bsc`, and confirm the packaged Vamp action/composer using a wallet with no launch funds if testing UI manually. Do not click Deploy on mainnet during a UI smoke.
 4. Confirm the action appears once on a Trenches card and once below Favorite on a token chart, opens an editable composer, and stays disabled when the mocked wallet cannot cover the conservative gas budget.

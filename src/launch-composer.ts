@@ -6,7 +6,7 @@ import {
   type LaunchMechanicsValidation,
   type ResolvedLaunchMechanics,
 } from "./launch-mechanics";
-import { getComposerPaymentAssets, paymentAssetLabel } from "./payment-assets";
+import { BUNDLED_PAYMENT_ASSETS, paymentAssetLabel } from "./payment-assets";
 import type { PaymentAsset } from "./payment-assets";
 import type {
   LaunchImageSource,
@@ -19,26 +19,16 @@ import type { FlapTaxInfo } from "./flap-tax-info";
 type MetadataField = keyof LaunchMetadataValues;
 
 export interface LaunchComposer {
-  open(invoker: HTMLButtonElement, sourceToken: ResolvedSourceToken, options: LaunchComposerOpenOptions): void;
+  open(invoker: HTMLButtonElement, sourceToken: ResolvedSourceToken, options: { sourceTaxInfo: FlapTaxInfo }): void;
   dismiss(): void;
-  readDraft(sourceAddress: string): LaunchDraftSnapshot | undefined;
 }
 
-export type LaunchComposerOpenOptions = {
-  kind: "flip-tax";
-  sourceTaxInfo: FlapTaxInfo;
-};
-
-export type LaunchDraftSnapshot = {
+type LaunchDraft = {
   sourceAddress: string;
   metadata: LaunchMetadataValues;
   imageSource: LaunchImageSource;
   mechanics: ResolvedLaunchMechanics | null;
   mechanicsValidation: LaunchMechanicsValidation;
-};
-
-type LaunchDraft = LaunchDraftSnapshot & {
-  mode: "flip-tax";
   sourceTaxInfo: FlapTaxInfo;
   sourceImageSource: LaunchImageSource;
   touched: Set<MetadataField>;
@@ -359,11 +349,10 @@ export function createLaunchComposer(): LaunchComposer {
   return {
     open(button, sourceToken, options) {
       const { context, identity, enrichment } = sourceToken;
-      const mode = "flip-tax";
       invoker = button;
       imageStatus.textContent = "";
       const sourceKey = context.sourceAddress || `ephemeral:${++ephemeralDraftSequence}`;
-      const draftKey = `flip-tax:${sourceKey}`;
+      const draftKey = sourceKey;
       let draft = drafts.get(draftKey);
       if (!draft) {
         const sourceImageSource = imageSourceFromUrl(context.imageUrl);
@@ -372,7 +361,6 @@ export function createLaunchComposer(): LaunchComposer {
           metadata: metadataFromContext(context),
           imageSource: sourceImageSource,
           sourceImageSource,
-          mode,
           sourceTaxInfo: structuredClone(options.sourceTaxInfo),
           touched: new Set(),
           mechanics: null,
@@ -384,7 +372,6 @@ export function createLaunchComposer(): LaunchComposer {
         draft.sourceTaxInfo = structuredClone(options.sourceTaxInfo);
       }
       activeDraft = draft;
-      host.dataset.composerMode = mode;
       composerTitle.textContent = "Flip Tax";
       composerIcon.src = chrome.runtime.getURL("assets/flip-tax.png");
       mechanicsHeading.textContent = "Holder-Fee Correction";
@@ -406,7 +393,7 @@ export function createLaunchComposer(): LaunchComposer {
       closeButton.focus();
 
       const sequence = ++openSequence;
-      void renderMechanics(sequence);
+      renderMechanics();
       identity?.then(
         (resolvedIdentity) => {
           if (sequence !== openSequence || draft !== activeDraft || host.hidden) return;
@@ -449,16 +436,6 @@ export function createLaunchComposer(): LaunchComposer {
       );
     },
     dismiss,
-    readDraft(sourceAddress) {
-      const draft = drafts.get(`flip-tax:${sourceAddress}`);
-      return draft ? {
-        sourceAddress: draft.sourceAddress,
-        metadata: { ...draft.metadata },
-        imageSource: { ...draft.imageSource },
-        mechanics: draft.mechanics ? structuredClone(draft.mechanics) : null,
-        mechanicsValidation: structuredClone(draft.mechanicsValidation),
-      } : undefined;
-    },
   };
 
   function updateDeployState(): void {
@@ -482,45 +459,35 @@ export function createLaunchComposer(): LaunchComposer {
     }
   }
 
-  async function renderMechanics(sequence: number): Promise<void> {
-    const paymentAssets = await getComposerPaymentAssets();
+  function renderMechanics(): void {
     const draft = activeDraft;
-    if (sequence !== openSequence || host.hidden || !draft) return;
-    const assets = [...paymentAssets];
+    if (!draft) return;
+    const assets = [...BUNDLED_PAYMENT_ASSETS];
     if (!draft.mechanicsValues) {
+      const quoteToken = draft.sourceTaxInfo.quoteToken.toLowerCase();
+      let sourceAsset = assets.find((asset) => asset.address?.toLowerCase() === quoteToken);
+      if (!sourceAsset) {
+        sourceAsset = {
+          id: `source-quote-${quoteToken}`,
+          symbol: draft.sourceTaxInfo.quoteSymbol,
+          label: "Source Token payment asset",
+          category: "crypto",
+          enabled: false,
+          address: draft.sourceTaxInfo.quoteToken as `0x${string}`,
+          unavailableReason: "The Source Token payment asset is not packaged with this extension. Choose a supported asset or update the extension.",
+        };
+        assets.unshift(sourceAsset);
+      }
       draft.mechanicsValues = {
-        paymentAssetId: "native-bnb",
-        buyTaxPercent: "0",
-        sellTaxPercent: "0",
+        paymentAssetId: sourceAsset.id,
+        buyTaxPercent: bpsPercent(draft.sourceTaxInfo.buyTaxBps),
+        sellTaxPercent: bpsPercent(draft.sourceTaxInfo.sellTaxBps),
         creatorFundsBps: "0",
         burnBps: "0",
         dividendBps: "10000",
         liquidityBps: "0",
         creatorPurchaseAmount: "0",
       };
-      if (draft.sourceTaxInfo) {
-        draft.mechanicsValues.buyTaxPercent = bpsPercent(draft.sourceTaxInfo.buyTaxBps);
-        draft.mechanicsValues.sellTaxPercent = bpsPercent(draft.sourceTaxInfo.sellTaxBps);
-        draft.mechanicsValues.creatorFundsBps = "0";
-        draft.mechanicsValues.burnBps = "0";
-        draft.mechanicsValues.dividendBps = "10000";
-        draft.mechanicsValues.liquidityBps = "0";
-        const quoteToken = draft.sourceTaxInfo.quoteToken.toLowerCase();
-        let sourceAsset = assets.find((asset) => asset.address?.toLowerCase() === quoteToken);
-        if (!sourceAsset) {
-          sourceAsset = {
-            id: `source-quote-${quoteToken}`,
-            symbol: draft.sourceTaxInfo.quoteSymbol,
-            label: "Source Token payment asset",
-            category: "crypto",
-            enabled: false,
-            address: draft.sourceTaxInfo.quoteToken as `0x${string}`,
-            unavailableReason: "The Source Token payment asset is not packaged with this extension. Choose a supported asset or update the extension.",
-          };
-          assets.unshift(sourceAsset);
-        }
-        draft.mechanicsValues.paymentAssetId = sourceAsset.id;
-      }
     }
     draft.paymentAssets = assets;
     renderMechanicsEditor(draft);
@@ -529,9 +496,9 @@ export function createLaunchComposer(): LaunchComposer {
   function renderMechanicsEditor(draft: LaunchDraft): void {
     const container = shadow.querySelector<HTMLElement>("[data-launch-mechanics]")!;
     container.innerHTML = `
-      <p class="flip-tax-note" hidden></p>
+      <p class="flip-tax-note"></p>
       <p class="mechanics-summary" data-mechanics-summary></p>
-      <fieldset class="creator-purchase-picker" hidden>
+      <fieldset class="creator-purchase-picker">
         <legend>Creator purchase amount</legend>
         <div class="creator-purchase-presets">
           ${["0", "0.1", "0.25", "0.5", "1"].map((amount) => `<button type="button" data-creator-purchase="${amount}" aria-pressed="false">${amount}</button>`).join("")}
@@ -560,18 +527,13 @@ export function createLaunchComposer(): LaunchComposer {
         </div>
       </details>`;
     const correctionNote = container.querySelector<HTMLElement>(".flip-tax-note")!;
-    if (draft.mode === "flip-tax" && draft.sourceTaxInfo) {
-      correctionNote.hidden = false;
       correctionNote.textContent = `Holder allocation ${bpsPercent(draft.sourceTaxInfo.dividendBps)}% → 100%. Source buy ${bpsPercent(draft.sourceTaxInfo.buyTaxBps)}% · sell ${bpsPercent(draft.sourceTaxInfo.sellTaxBps)}% preserved.`;
       container.querySelector<HTMLElement>("summary")!.textContent = "Review corrected mechanics";
-    }
 
     const values = draft.mechanicsValues!;
     const assets = draft.paymentAssets ?? [];
-    const creatorPurchasePicker = container.querySelector<HTMLFieldSetElement>(".creator-purchase-picker")!;
     const creatorPurchasePickerInput = container.querySelector<HTMLInputElement>("[data-creator-purchase-input]")!;
     const creatorPurchaseInput = container.querySelector<HTMLInputElement>('input[name="creatorPurchaseAmount"]')!;
-    creatorPurchasePicker.hidden = draft.mode !== "flip-tax";
     const assetPicker = container.querySelector<HTMLElement>("[data-payment-assets]")!;
     assetPicker.replaceChildren(...assets.map((asset) => createAssetOption(asset, values.paymentAssetId)));
     if (!assets.some(({ id }) => id === values.paymentAssetId)) {
