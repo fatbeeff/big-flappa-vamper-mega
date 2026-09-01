@@ -44,6 +44,12 @@
       "matches": ["https://app.long.xyz/create*"],
       "js": ["official-launch-prefill.js"],
       "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["x-post-source.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
     }
   ],
   "web_accessible_resources": [

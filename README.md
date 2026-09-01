@@ -20,6 +20,10 @@ Long.xyz keeps control of its launch options. PONS defaults to the copied source
 - Long.xyz cards show `VERIFIED LONG` for an authentic token and a red warning for a failed authenticity verdict. Network and API failures stay neutral.
 - Flap tokens with partial holder allocation receive a **Flip Tax** action. It preserves the source tax rates and payment asset, then prepares a launch with 100% of tax routed to holders.
 
+### X post source
+
+On an individual X post page, the extension restores X's per-post client label beside the timestamp, such as `Twitter Web App`. The label is read passively from the post response X already sends to the browser. It identifies an app/client label, not a physical device, and custom apps can choose misleading names.
+
 ### Flap launch composer
 
 The Flap composer supports:
@@ -91,6 +95,7 @@ The extension requests access to these sites for the listed jobs:
 | `gmgn.ai` | Add Vamp, Flip Tax, fee-routing, and authenticity controls |
 | `app.long.xyz` | Check Long authenticity and prefill the create flow |
 | `ponsfamily.com` | Copy token images to PONS IPFS |
+| `x.com` and `twitter.com` | Show the posting-client label already present in X's per-post response |
 | Robinhood Chain RPC | Read PONS launch settings and token identity |
 | BNB Chain RPC | Read Flap contracts and confirm transactions |
 | Flap upload service | Upload the selected token image and public metadata |

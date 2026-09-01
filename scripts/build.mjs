@@ -8,7 +8,7 @@ await mkdir(output, { recursive: true });
 await cp(path.resolve("public"), output, { recursive: true });
 
 await build({
-  entryPoints: ["src/background.ts", "src/content.ts", "src/long-relay.ts", "src/official-launch-prefill.ts", "src/route-observer.ts"],
+  entryPoints: ["src/background.ts", "src/content.ts", "src/long-relay.ts", "src/official-launch-prefill.ts", "src/route-observer.ts", "src/x-post-source.ts"],
   outdir: output,
   bundle: true,
   format: "iife",

@@ -5,6 +5,7 @@ import path from "node:path";
 
 export type ExtensionHarness = {
   openGmgnTokenSurface(html: string, url: string): Promise<Page>;
+  openXPost(html: string, url: string, response: unknown): Promise<Page>;
   setExtensionStorage(entries: Record<string, unknown>): Promise<void>;
   mockBscRpc(handler: (route: Route) => Promise<void> | void): Promise<void>;
   mockRobinhoodRpc(handler: (route: Route) => Promise<void> | void): Promise<void>;
@@ -26,6 +27,18 @@ export const test = base.extend<{ extension: ExtensionHarness }>({
             contentType: "image/png",
             body: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=", "base64"),
           });
+        }
+        return route.fulfill({ status: 200, contentType: "text/html", body: html });
+      });
+      const page = await context.newPage();
+      await page.goto(url);
+      return page;
+    }
+
+    async function openXPost(html: string, url: string, response: unknown): Promise<Page> {
+      await context.route("https://x.com/**", (route) => {
+        if (route.request().url().includes("TweetResultByRestId")) {
+          return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(response) });
         }
         return route.fulfill({ status: 200, contentType: "text/html", body: html });
       });
@@ -88,7 +101,7 @@ export const test = base.extend<{ extension: ExtensionHarness }>({
       });
     }
 
-    await use({ openGmgnTokenSurface, setExtensionStorage, mockBscRpc, mockRobinhoodRpc, mockLongApi, setNetworkOffline, installInjectedWallet });
+    await use({ openGmgnTokenSurface, openXPost, setExtensionStorage, mockBscRpc, mockRobinhoodRpc, mockLongApi, setNetworkOffline, installInjectedWallet });
     await context.close();
     await rm(userDataDirectory, { recursive: true, force: true });
   },

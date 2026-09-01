@@ -38,6 +38,7 @@ The product supports holder-first corrections rather than general token launches
 - Long's single optional-link field uses X, then website, then Telegram. Descriptions are limited to 100 characters.
 - Flap and PONS cards show holder-fee routing. Long cards show the official authenticity verdict; failed checks remain neutral.
 - The extension uses the Operator's injected EIP-1193 wallet and never imports or stores private keys.
+- Individual X post pages show the per-post client label delivered in X's own response. The extension does not treat that app-controlled label as physical-device proof.
 - Flap payment assets come from a validated manifest packaged with the extension; updating the list requires an extension release.
 
 ## Brand Commitments
