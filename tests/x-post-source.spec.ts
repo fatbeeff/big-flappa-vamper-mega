@@ -4,7 +4,11 @@ test("shows the per-post client supplied by X without treating it as hardware pr
   const postId = "2093500169723814093";
   const page = await extension.openXPost(`<!doctype html><html><body>
     <a href="/kevin_t_ngo/status/${postId}"><time>Aug 29</time></a>
-    <script>fetch("https://x.com/i/api/graphql/current/TweetResultByRestId?variables=test")</script>
+    <script>
+      const request = new XMLHttpRequest();
+      request.open("GET", "https://x.com/i/api/graphql/current/TweetResultByRestId?variables=test");
+      request.send();
+    </script>
   </body></html>`, `https://x.com/kevin_t_ngo/status/${postId}`, {
     data: { tweetResult: { result: {
       rest_id: postId,

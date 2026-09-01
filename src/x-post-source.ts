@@ -4,11 +4,26 @@ const sourceByPost = new Map<string, { label: string; href: string | null }>();
 const nativeFetch = window.fetch.bind(window);
 window.fetch = async (...args: Parameters<typeof window.fetch>): Promise<Response> => {
   const response = await nativeFetch(...args);
-  if (/\/(TweetResultByRestId|TweetDetail)(?:\?|$)/.test(response.url)) {
+  if (isPostResponse(response.url)) {
     void response.clone().json().then(readSources).catch(() => undefined);
   }
   return response;
 };
+
+const nativeXhrSend = XMLHttpRequest.prototype.send;
+XMLHttpRequest.prototype.send = function (...args: Parameters<XMLHttpRequest["send"]>): void {
+  this.addEventListener("load", () => {
+    if (!isPostResponse(this.responseURL)) return;
+    try {
+      readSources(this.responseType === "json" ? this.response : JSON.parse(this.responseText));
+    } catch { /* Ignore non-JSON and inaccessible responses. */ }
+  }, { once: true });
+  nativeXhrSend.apply(this, args);
+};
+
+function isPostResponse(url: string): boolean {
+  return /\/(TweetResultByRestId|TweetDetail)(?:\?|$)/.test(url);
+}
 
 function readSources(value: unknown): void {
   collectSources(value);
